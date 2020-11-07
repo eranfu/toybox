@@ -1,0 +1,12 @@
+[package]
+name = "tb_editor"
+version = "0.1.0"
+authors = ["moca-f <1119369173@qq.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+toybox = { path = "..", features = ["editor"] }
+tb_core = { path = "../tb_core" }
+tb_app = { path = "../tb_app" }
