@@ -1,5 +1,10 @@
-use crate::component::storage::Storage;
+use crate::component::{Component, Components};
+use crate::entity::EntityId;
 
-pub struct DenseStorage;
+pub struct DenseStorage<C: Component> {
+    components: Vec<C>,
+    entity_ids: Vec<EntityId>,
+    indices_of_entity: Vec<usize>,
+}
 
-impl Storage for DenseStorage {}
+impl<C: Component> Components<C> for DenseStorage<C> {}

@@ -1,5 +1,5 @@
 [package]
-name = "tb_app"
+name = "tb_gameplay"
 version = "0.1.0"
 authors = ["mingyuan-f <1119369173@qq.com>"]
 edition = "2018"
@@ -7,7 +7,9 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-tb_core = { path = "../tb_core" }
-tb_ecs = { path = "../tb_ecs" }
 tb_engine = { path = "../tb_engine" }
-rayon = "1.5.0"
+
+[features]
+editor = ["tb_engine/editor"]
+client = ["tb_engine/client"]
+server = ["tb_engine/server"]

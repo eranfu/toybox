@@ -1,5 +1,7 @@
 use std::ops::{Deref, DerefMut};
 
+use crate::component::{Component, ComponentsWithMask};
+use crate::entity::Entities;
 use crate::World;
 use crate::world::{Resource, ResourceId};
 
@@ -30,6 +32,27 @@ pub struct RAW<'r, R: Resource> {
     resource: &'r R,
 }
 
+pub struct RBWStorage<'r, C: Component> {
+    entities: &'r Entities,
+    storage: &'r ComponentsWithMask<C>,
+}
+
+pub struct WriteStorage<'r, C: Component> {
+    entities: &'r Entities,
+    storage: &'r mut ComponentsWithMask<C>,
+}
+
+pub struct RAWStorage<'r, C: Component> {
+    entities: &'r Entities,
+    storage: &'r ComponentsWithMask<C>,
+}
+
+
+impl<'r> SystemData<'r> for () {
+    fn fetch(_world: &'r World) -> Self {
+        ()
+    }
+}
 
 impl<'r, R: Resource> Deref for RBW<'r, R> {
     type Target = R;
@@ -92,9 +115,42 @@ impl<'r, R: Resource> SystemData<'r> for RAW<'r, R> {
     }
 }
 
-impl<'r> SystemData<'r> for () {
-    fn fetch(_world: &'r World) -> Self {
-        ()
+impl<'r, C: Component> SystemData<'r> for RBWStorage<'r, C> {
+    fn fetch(world: &'r World) -> Self {
+        Self {
+            entities: world.fetch(),
+            storage: world.fetch(),
+        }
+    }
+
+    fn reads_before_write() -> Vec<ResourceId> {
+        vec![ResourceId::new::<Entities>(), ResourceId::new::<ComponentsWithMask<C>>()]
+    }
+}
+
+impl<'r, C: Component> SystemData<'r> for WriteStorage<'r, C> {
+    fn fetch(world: &'r World) -> Self {
+        Self {
+            entities: world.fetch(),
+            storage: world.fetch_mut(),
+        }
+    }
+
+    fn writes() -> Vec<ResourceId> {
+        vec![ResourceId::new::<Entities>(), ResourceId::new::<ComponentsWithMask<C>>()]
+    }
+}
+
+impl<'r, C: Component> SystemData<'r> for RAWStorage<'r, C> {
+    fn fetch(world: &'r World) -> Self {
+        Self {
+            entities: world.fetch(),
+            storage: world.fetch(),
+        }
+    }
+
+    fn reads_after_write() -> Vec<ResourceId> {
+        vec![ResourceId::new::<Entities>(), ResourceId::new::<ComponentsWithMask<C>>()]
     }
 }
 
@@ -139,3 +195,29 @@ macro_rules! impl_system_data {
 }
 
 impl_system_data!(S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15);
+
+#[cfg(test)]
+mod tests {
+    use rayon::ThreadPoolBuilder;
+
+    use crate::{Scheduler, System, World};
+
+    struct TestSystem {}
+
+    impl<'r> System<'r> for TestSystem {
+        type SystemData = ();
+
+        fn run(&mut self, _system_data: &mut Self::SystemData) {
+            assert_eq!(2 + 2, 4);
+        }
+    }
+
+    #[test]
+    fn empty_system_data() {
+        let mut thread_pool = ThreadPoolBuilder::new().build().unwrap();
+        let mut scheduler = Scheduler::new(&mut thread_pool);
+        scheduler.insert(TestSystem {});
+        let world = World::default();
+        scheduler.schedule(&world);
+    }
+}

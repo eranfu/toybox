@@ -1,6 +1,6 @@
 #[derive(Default)]
 pub(crate) struct Generation {
-    gen: i32
+    gen: i32,
 }
 
 impl Generation {
@@ -11,11 +11,14 @@ impl Generation {
 
     fn validate(&mut self) {
         assert!(!self.is_valid());
-        self.gen = -self.gen
+        self.gen = self
+            .gen
+            .checked_neg()
+            .expect("generation checked_neg failed");
     }
 
     fn is_valid(&self) -> bool {
-        return self.gen >= 0;
+        self.gen >= 0
     }
 }
 
@@ -24,6 +27,7 @@ mod tests {
     use crate::entity::generation::Generation;
 
     #[test]
+    #[should_panic(expected = "generation checked_neg failed")]
     fn validate_gen() {
         let mut gen = Generation::default();
         assert!(gen.is_valid());

@@ -1,5 +1,5 @@
 [package]
-name = "tb_app"
+name = "tb_engine"
 version = "0.1.0"
 authors = ["mingyuan-f <1119369173@qq.com>"]
 edition = "2018"
@@ -9,5 +9,8 @@ edition = "2018"
 [dependencies]
 tb_core = { path = "../tb_core" }
 tb_ecs = { path = "../tb_ecs" }
-tb_engine = { path = "../tb_engine" }
-rayon = "1.5.0"
+
+[features]
+editor = []
+client = []
+server = []

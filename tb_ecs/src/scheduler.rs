@@ -1,46 +1,18 @@
+use std::any::TypeId;
 use std::cell::RefCell;
 
-use crate::{System, World};
-use crate::system::SystemData;
+use rayon::ThreadPool;
 
-#[derive(Default)]
-pub struct Scheduler {
+use crate::system::SystemData;
+use crate::{System, World};
+
+pub struct Scheduler<'t> {
+    thread_pool: &'t mut ThreadPool,
     stages: Vec<Stage>,
 }
 
-impl Scheduler {
-    pub(crate) fn insert(&mut self, runnable: impl Runnable) {
-        let last_stage = {
-            match self.stages.last_mut() {
-                None => {
-                    self.stages.push(Stage::default());
-                    self.stages.last_mut().unwrap()
-                }
-                Some(last) => {
-                    last
-                }
-            }
-        };
-
-        let last_group = {
-            match last_stage.groups.last_mut() {
-                None => {
-                    last_stage.groups.push(Group::default());
-                    last_stage.groups.last_mut().unwrap()
-                }
-                Some(last) => {
-                    last
-                }
-            }
-        };
-
-        last_group.runnable_list.push(Box::new(RefCell::new(runnable)));
-    }
-}
-
-#[derive(Default)]
 struct Stage {
-    groups: Vec<Group>
+    groups: Vec<Group>,
 }
 
 #[derive(Default)]
@@ -52,7 +24,47 @@ pub(crate) trait Runnable: 'static {
     fn run(&mut self, world: &World);
 }
 
-impl Scheduler {
+#[derive(Eq, PartialEq, Hash)]
+struct RunnableId {
+    type_id: TypeId,
+}
+
+impl Stage {
+    fn new(group_num: usize) -> Self {
+        let mut groups = vec![];
+        groups.reserve(group_num);
+        for _i in 0..group_num {
+            groups.push(Group::default());
+        }
+        Self { groups }
+    }
+}
+
+impl RunnableId {
+    fn new<R: Runnable>() -> Self {
+        Self {
+            type_id: TypeId::of::<R>(),
+        }
+    }
+}
+
+impl<'t> Scheduler<'t> {
+    pub fn new(thread_pool: &'t mut ThreadPool) -> Self {
+        Self {
+            thread_pool,
+            stages: vec![],
+        }
+    }
+
+    pub(crate) fn insert<R: Runnable>(&mut self, runnable: R) {
+        self.stages
+            .push(Stage::new(self.thread_pool.current_num_threads() * 2));
+        let last_stage = self.stages.last_mut().unwrap();
+        last_stage.groups[0]
+            .runnable_list
+            .push(Box::new(RefCell::new(runnable)));
+    }
+
     pub fn schedule(&self, world: &World) {
         for stage in &self.stages {
             for group in &stage.groups {
@@ -64,7 +76,10 @@ impl Scheduler {
     }
 }
 
-impl<T> Runnable for T where for<'r> T: 'static + System<'r> {
+impl<T> Runnable for T
+where
+    for<'r> T: 'static + System<'r>,
+{
     fn run(&mut self, world: &World) {
         let mut system_data = T::SystemData::fetch(world);
         self.run(&mut system_data);
@@ -73,8 +88,10 @@ impl<T> Runnable for T where for<'r> T: 'static + System<'r> {
 
 #[cfg(test)]
 mod tests {
+    use rayon::ThreadPoolBuilder;
+
+    use crate::system::{Write, RAW};
     use crate::{Scheduler, System, World};
-    use crate::system::{RAW, Write};
 
     struct TestSystem {}
 
@@ -108,7 +125,8 @@ mod tests {
     #[test]
     fn scheduler_works() {
         let mut world = World::default();
-        let mut scheduler = Scheduler::default();
+        let mut thread_pool = ThreadPoolBuilder::new().build().unwrap();
+        let mut scheduler = Scheduler::new(&mut thread_pool);
         let resource = TestResource { value: 10 };
         world.insert(resource);
         world.insert(OtherResource { value: 100 });
