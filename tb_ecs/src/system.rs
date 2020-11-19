@@ -1,9 +1,9 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::component::{Component, ComponentsWithMask};
+use crate::component::{Component, Components};
 use crate::entity::Entities;
-use crate::World;
 use crate::world::{Resource, ResourceId};
+use crate::World;
 
 pub trait System<'r> {
     type SystemData: SystemData<'r>;
@@ -12,9 +12,15 @@ pub trait System<'r> {
 
 pub trait SystemData<'r> {
     fn fetch(world: &'r World) -> Self;
-    fn reads_before_write() -> Vec<ResourceId> { vec![] }
-    fn writes() -> Vec<ResourceId> { vec![] }
-    fn reads_after_write() -> Vec<ResourceId> { vec![] }
+    fn reads_before_write() -> Vec<ResourceId> {
+        vec![]
+    }
+    fn writes() -> Vec<ResourceId> {
+        vec![]
+    }
+    fn reads_after_write() -> Vec<ResourceId> {
+        vec![]
+    }
 }
 
 /// Read before write
@@ -34,19 +40,18 @@ pub struct RAW<'r, R: Resource> {
 
 pub struct RBWStorage<'r, C: Component> {
     entities: &'r Entities,
-    storage: &'r ComponentsWithMask<C>,
+    components: &'r Components<C>,
 }
 
 pub struct WriteStorage<'r, C: Component> {
     entities: &'r Entities,
-    storage: &'r mut ComponentsWithMask<C>,
+    components: &'r mut Components<C>,
 }
 
 pub struct RAWStorage<'r, C: Component> {
     entities: &'r Entities,
-    storage: &'r ComponentsWithMask<C>,
+    components: &'r Components<C>,
 }
-
 
 impl<'r> SystemData<'r> for () {
     fn fetch(_world: &'r World) -> Self {
@@ -84,10 +89,11 @@ impl<'r, R: Resource> Deref for RAW<'r, R> {
     }
 }
 
-
 impl<'r, R: Resource> SystemData<'r> for RBW<'r, R> {
     fn fetch(world: &'r World) -> Self {
-        RBW { resource: world.fetch() }
+        RBW {
+            resource: world.fetch(),
+        }
     }
 
     fn reads_before_write() -> Vec<ResourceId> {
@@ -97,7 +103,9 @@ impl<'r, R: Resource> SystemData<'r> for RBW<'r, R> {
 
 impl<'r, R: Resource> SystemData<'r> for Write<'r, R> {
     fn fetch(world: &'r World) -> Self {
-        Write { resource: world.fetch_mut() }
+        Write {
+            resource: world.fetch_mut(),
+        }
     }
 
     fn writes() -> Vec<ResourceId> {
@@ -107,7 +115,9 @@ impl<'r, R: Resource> SystemData<'r> for Write<'r, R> {
 
 impl<'r, R: Resource> SystemData<'r> for RAW<'r, R> {
     fn fetch(world: &'r World) -> Self {
-        RAW { resource: world.fetch() }
+        RAW {
+            resource: world.fetch(),
+        }
     }
 
     fn reads_after_write() -> Vec<ResourceId> {
@@ -119,12 +129,15 @@ impl<'r, C: Component> SystemData<'r> for RBWStorage<'r, C> {
     fn fetch(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
-            storage: world.fetch(),
+            components: world.fetch(),
         }
     }
 
     fn reads_before_write() -> Vec<ResourceId> {
-        vec![ResourceId::new::<Entities>(), ResourceId::new::<ComponentsWithMask<C>>()]
+        vec![
+            ResourceId::new::<Entities>(),
+            ResourceId::new::<Components<C>>(),
+        ]
     }
 }
 
@@ -132,12 +145,15 @@ impl<'r, C: Component> SystemData<'r> for WriteStorage<'r, C> {
     fn fetch(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
-            storage: world.fetch_mut(),
+            components: world.fetch_mut(),
         }
     }
 
     fn writes() -> Vec<ResourceId> {
-        vec![ResourceId::new::<Entities>(), ResourceId::new::<ComponentsWithMask<C>>()]
+        vec![
+            ResourceId::new::<Entities>(),
+            ResourceId::new::<Components<C>>(),
+        ]
     }
 }
 
@@ -145,12 +161,15 @@ impl<'r, C: Component> SystemData<'r> for RAWStorage<'r, C> {
     fn fetch(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
-            storage: world.fetch(),
+            components: world.fetch(),
         }
     }
 
     fn reads_after_write() -> Vec<ResourceId> {
-        vec![ResourceId::new::<Entities>(), ResourceId::new::<ComponentsWithMask<C>>()]
+        vec![
+            ResourceId::new::<Entities>(),
+            ResourceId::new::<Components<C>>(),
+        ]
     }
 }
 

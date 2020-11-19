@@ -3,6 +3,8 @@
 use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
 
+pub type Id = u32;
+
 #[derive(Debug)]
 pub struct AnyError {
     inner: Box<dyn std::error::Error>,
@@ -13,13 +15,20 @@ pub type AnyErrorResult<T> = Result<T, AnyError>;
 
 impl Display for AnyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}\nstack backtrace from AnyError:\n{}", self.inner, self.back_trace)
+        write!(
+            f,
+            "{}\nstack backtrace from AnyError:\n{}",
+            self.inner, self.back_trace
+        )
     }
 }
 
 impl<E: 'static + std::error::Error> From<E> for AnyError {
     fn from(e: E) -> Self {
-        Self { inner: e.into(), back_trace: Backtrace::capture() }
+        Self {
+            inner: e.into(),
+            back_trace: Backtrace::capture(),
+        }
     }
 }
 

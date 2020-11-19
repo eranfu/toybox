@@ -7,8 +7,9 @@ pub use system::System;
 pub use system::SystemData;
 pub use world::World;
 
-mod entity;
 mod component;
+mod entity;
+mod join;
+mod scheduler;
 mod system;
 mod world;
-mod scheduler;
