@@ -2,19 +2,19 @@ use std::mem::MaybeUninit;
 
 use tb_core::Id;
 
-use crate::Storage;
+use crate::{util, Storage};
 
 #[derive(Default)]
 pub struct DenseStorage<D> {
     data: Vec<D>,
     data_id: Vec<Id>,
     indices: Vec<MaybeUninit<usize>>,
-    base_id: Id,
+    base_id: Option<Id>,
 }
 
 impl<D> DenseStorage<D> {
     fn get_index_in_indices(&self, id: u32) -> usize {
-        (id.checked_sub(self.base_id)).unwrap() as usize
+        id.checked_sub(self.base_id.unwrap()).unwrap() as usize
     }
 }
 
@@ -26,26 +26,11 @@ impl<D> Storage<D> for DenseStorage<D> {
     }
 
     unsafe fn insert(&mut self, id: Id, data: D) -> &mut D {
-        let index_in_data = self.data.len();
-        if index_in_data == 0 {
-            self.base_id = id;
-        } else if id < self.base_id {
-            // rebase
-            let delta = (self.base_id - id) as usize;
-            self.indices.reserve(delta);
-            let old_len = self.indices.len();
-            self.indices.set_len(old_len + delta);
-            self.indices.copy_within(0..old_len, delta);
-            self.base_id = id;
-        }
-
+        util::setup_base_id(&mut self.base_id, &mut self.indices, id);
         let index_in_indices = self.get_index_in_indices(id);
-        if self.indices.len() <= index_in_indices {
-            self.indices
-                .reserve(index_in_indices + 1 - self.indices.len());
-            self.indices.set_len(index_in_indices + 1);
-        }
+        util::ensure_index(&mut self.indices, index_in_indices);
 
+        let index_in_data = self.data.len();
         self.indices
             .get_unchecked_mut(index_in_indices)
             .as_mut_ptr()
@@ -118,7 +103,7 @@ mod tests {
             storage.insert(6, 6);
             assert_eq!(storage.data, vec![4, 3, 2, 8, 6]);
             assert_eq!(storage.data_id, vec![4, 3, 2, 8, 6]);
-            assert_eq!(storage.base_id, 2);
+            assert_eq!(storage.base_id, Some(2));
             assert_eq!(storage.indices[0].assume_init(), 2);
             assert_eq!(storage.indices[1].assume_init(), 1);
             assert_eq!(storage.indices[2].assume_init(), 0);
@@ -138,7 +123,7 @@ mod tests {
             storage.insert(6, 6);
             assert_eq!(storage.data, vec![4, 3, 2, 8, 6]);
             assert_eq!(storage.data_id, vec![4, 3, 2, 8, 6]);
-            assert_eq!(storage.base_id, 2);
+            assert_eq!(storage.base_id, Some(2));
             assert_eq!(storage.indices[0].assume_init(), 2);
             assert_eq!(storage.indices[1].assume_init(), 1);
             assert_eq!(storage.indices[2].assume_init(), 0);
@@ -148,7 +133,7 @@ mod tests {
             storage.remove(3);
             assert_eq!(storage.data, vec![4, 6, 2, 8]);
             assert_eq!(storage.data_id, vec![4, 6, 2, 8]);
-            assert_eq!(storage.base_id, 2);
+            assert_eq!(storage.base_id, Some(2));
             assert_eq!(storage.indices[0].assume_init(), 2);
             assert_eq!(storage.indices[2].assume_init(), 0);
             assert_eq!(storage.indices[4].assume_init(), 1);
@@ -157,7 +142,7 @@ mod tests {
             storage.remove(8);
             assert_eq!(storage.data, vec![4, 6, 2]);
             assert_eq!(storage.data_id, vec![4, 6, 2]);
-            assert_eq!(storage.base_id, 2);
+            assert_eq!(storage.base_id, Some(2));
             assert_eq!(storage.indices[0].assume_init(), 2);
             assert_eq!(storage.indices[2].assume_init(), 0);
             assert_eq!(storage.indices[4].assume_init(), 1);

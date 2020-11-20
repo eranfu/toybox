@@ -1,5 +1,6 @@
 pub use dense_storage::DenseStorage;
 use tb_core::Id;
+pub use vec_storage::VecStorage;
 
 pub trait Storage<D> {
     fn clear(&mut self);
@@ -34,3 +35,5 @@ pub trait Storage<D> {
 }
 
 mod dense_storage;
+mod vec_storage;
+mod util;
