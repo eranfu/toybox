@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 tb_core = { path = "../tb_core" }
+hibitset = "0.6.3"

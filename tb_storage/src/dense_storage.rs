@@ -1,10 +1,11 @@
 use std::mem::MaybeUninit;
 
+use hibitset::BitSetLike;
+
 use tb_core::Id;
 
 use crate::{util, Storage};
 
-#[derive(Default)]
 pub struct DenseStorage<D> {
     data: Vec<D>,
     data_id: Vec<Id>,
@@ -18,11 +19,23 @@ impl<D> DenseStorage<D> {
     }
 }
 
+impl<D> Default for DenseStorage<D> {
+    fn default() -> Self {
+        Self {
+            data: Default::default(),
+            data_id: Default::default(),
+            indices: Default::default(),
+            base_id: Default::default(),
+        }
+    }
+}
+
 impl<D> Storage<D> for DenseStorage<D> {
-    fn clear(&mut self) {
+    unsafe fn clear<B: BitSetLike>(&mut self, _has: B) {
+        self.base_id = None;
         self.data.clear();
-        self.data_id.clear();
-        self.indices.clear();
+        self.data_id.set_len(0);
+        self.indices.set_len(0);
     }
 
     unsafe fn insert(&mut self, id: Id, data: D) -> &mut D {
@@ -73,7 +86,44 @@ impl<D> Storage<D> for DenseStorage<D> {
 
 #[cfg(test)]
 mod tests {
+    use tb_core::Id;
+
     use crate::{DenseStorage, Storage};
+
+    #[derive(Eq, PartialEq, Debug, Clone)]
+    struct TestData {
+        id: Id,
+    }
+
+    impl TestData {
+        fn new(id: Id) -> Self {
+            Self { id }
+        }
+    }
+
+    impl Drop for TestData {
+        fn drop(&mut self) {
+            println!("TestData dropped. id: {}", self.id);
+        }
+    }
+
+    #[test]
+    fn drop() {
+        unsafe {
+            let mut storage: DenseStorage<TestData> = Default::default();
+            let data_4 = TestData::new(4);
+            let data_3 = TestData::new(3);
+            let data_2 = TestData::new(2);
+            let data_8 = TestData::new(8);
+            let data_6 = TestData::new(6);
+
+            storage.insert(4, data_4.clone());
+            storage.insert(3, data_3.clone());
+            storage.insert(2, data_2.clone());
+            storage.insert(8, data_8.clone());
+            storage.insert(6, data_6.clone());
+        }
+    }
 
     #[test]
     fn insert() {
