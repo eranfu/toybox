@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::component::{Component, Components};
+use crate::component::Component;
 use crate::entity::Entities;
 use crate::world::{Resource, ResourceId};
 use crate::World;
@@ -40,17 +40,17 @@ pub struct RAW<'r, R: Resource> {
 
 pub struct RBWStorage<'r, C: Component> {
     entities: &'r Entities,
-    components: &'r Components<C>,
+    components: &'r C::Storage,
 }
 
 pub struct WriteStorage<'r, C: Component> {
     entities: &'r Entities,
-    components: &'r mut Components<C>,
+    components: &'r mut C::Storage,
 }
 
 pub struct RAWStorage<'r, C: Component> {
     entities: &'r Entities,
-    components: &'r Components<C>,
+    components: &'r C::Storage,
 }
 
 impl<'r> SystemData<'r> for () {
@@ -136,7 +136,7 @@ impl<'r, C: Component> SystemData<'r> for RBWStorage<'r, C> {
     fn reads_before_write() -> Vec<ResourceId> {
         vec![
             ResourceId::new::<Entities>(),
-            ResourceId::new::<Components<C>>(),
+            ResourceId::new::<C::Storage>(),
         ]
     }
 }
@@ -152,7 +152,7 @@ impl<'r, C: Component> SystemData<'r> for WriteStorage<'r, C> {
     fn writes() -> Vec<ResourceId> {
         vec![
             ResourceId::new::<Entities>(),
-            ResourceId::new::<Components<C>>(),
+            ResourceId::new::<C::Storage>(),
         ]
     }
 }
@@ -168,7 +168,7 @@ impl<'r, C: Component> SystemData<'r> for RAWStorage<'r, C> {
     fn reads_after_write() -> Vec<ResourceId> {
         vec![
             ResourceId::new::<Entities>(),
-            ResourceId::new::<Components<C>>(),
+            ResourceId::new::<C::Storage>(),
         ]
     }
 }
@@ -226,9 +226,7 @@ mod tests {
     impl<'r> System<'r> for TestSystem {
         type SystemData = ();
 
-        fn run(&mut self, _system_data: &mut Self::SystemData) {
-            assert_eq!(2 + 2, 4);
-        }
+        fn run(&mut self, _system_data: &mut Self::SystemData) {}
     }
 
     #[test]

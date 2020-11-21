@@ -1,5 +1,4 @@
 use std::marker::PhantomData;
-use std::rc::Rc;
 
 pub trait Asset {}
 

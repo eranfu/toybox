@@ -1,128 +1,161 @@
 use std::mem::MaybeUninit;
 
-use hibitset::BitSetLike;
+use hibitset::BitSet;
 
 use tb_core::Id;
 
 use crate::{util, Storage};
 
 pub struct DenseStorage<D> {
+    mask: BitSet,
+    base_id: Option<Id>,
+    indices: Vec<MaybeUninit<usize>>,
     data: Vec<D>,
     data_id: Vec<Id>,
-    indices: Vec<MaybeUninit<usize>>,
-    base_id: Option<Id>,
-}
-
-impl<D> DenseStorage<D> {
-    fn get_index_in_indices(&self, id: u32) -> usize {
-        id.checked_sub(self.base_id.unwrap()).unwrap() as usize
-    }
 }
 
 impl<D> Default for DenseStorage<D> {
     fn default() -> Self {
         Self {
+            mask: Default::default(),
+            base_id: Default::default(),
+            indices: Default::default(),
             data: Default::default(),
             data_id: Default::default(),
-            indices: Default::default(),
-            base_id: Default::default(),
         }
     }
 }
 
 impl<D> Storage<D> for DenseStorage<D> {
-    unsafe fn clear<B: BitSetLike>(&mut self, _has: B) {
+    fn clear(&mut self) {
+        self.mask.clear();
         self.base_id = None;
         self.data.clear();
-        self.data_id.set_len(0);
-        self.indices.set_len(0);
+        unsafe {
+            self.data_id.set_len(0);
+            self.indices.set_len(0);
+        }
     }
 
-    unsafe fn insert(&mut self, id: Id, data: D) -> &mut D {
-        util::setup_base_id(&mut self.base_id, &mut self.indices, id);
-        let index_in_indices = self.get_index_in_indices(id);
-        util::ensure_index(&mut self.indices, index_in_indices);
+    fn insert(&mut self, id: Id, data: D) -> &mut D {
+        assert!(!self.mask.contains(id));
 
         let index_in_data = self.data.len();
-        self.indices
-            .get_unchecked_mut(index_in_indices)
-            .as_mut_ptr()
-            .write(index_in_data);
         self.data.push(data);
         self.data_id.push(id);
+        self.mask.add(id);
 
-        self.data.get_unchecked_mut(index_in_data)
+        unsafe {
+            let index_in_indices =
+                util::setup_index_with_base(&mut self.base_id, &mut self.indices, id);
+            self.indices
+                .get_unchecked_mut(index_in_indices)
+                .as_mut_ptr()
+                .write(index_in_data);
+            self.data.get_unchecked_mut(index_in_data)
+        }
     }
 
-    unsafe fn remove(&mut self, id: u32) {
-        let index_in_indices = self.get_index_in_indices(id);
-        let index_in_data = self.indices.get_unchecked(index_in_indices).assume_init();
+    fn remove(&mut self, id: u32) {
+        assert!(self.mask.contains(id));
+        let index_in_indices = util::get_index_with_base(self.base_id, id);
+        let index_in_data = unsafe { self.indices.get_unchecked(index_in_indices).assume_init() };
         let last_data_id = *self.data_id.last().unwrap();
-        let last_data_index_in_indices = self.get_index_in_indices(last_data_id);
+        let last_data_index_in_indices = util::get_index_with_base(self.base_id, last_data_id);
+
         self.data.swap_remove(index_in_data);
         self.data_id.swap_remove(index_in_data);
-        self.indices
-            .get_unchecked_mut(last_data_index_in_indices)
-            .as_mut_ptr()
-            .write(index_in_data);
+        self.mask.remove(id);
+
+        unsafe {
+            self.indices
+                .get_unchecked_mut(last_data_index_in_indices)
+                .as_mut_ptr()
+                .write(index_in_data);
+        }
     }
 
-    unsafe fn get(&self, id: u32) -> &D {
-        let index = self
-            .indices
-            .get_unchecked(self.get_index_in_indices(id))
-            .assume_init();
-        self.data.get_unchecked(index)
+    fn get(&self, id: u32) -> &D {
+        assert!(self.mask.contains(id));
+        unsafe {
+            let index = self
+                .indices
+                .get_unchecked(util::get_index_with_base(self.base_id, id))
+                .assume_init();
+            self.data.get_unchecked(index)
+        }
     }
 
-    unsafe fn get_mut(&mut self, id: u32) -> &mut D {
-        let index = self
-            .indices
-            .get_unchecked(self.get_index_in_indices(id))
-            .assume_init();
-        self.data.get_unchecked_mut(index)
+    fn get_mut(&mut self, id: u32) -> &mut D {
+        assert!(self.mask.contains(id));
+        unsafe {
+            let index = self
+                .indices
+                .get_unchecked(util::get_index_with_base(self.base_id, id))
+                .assume_init();
+            self.data.get_unchecked_mut(index)
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use testdrop::{Item, TestDrop};
+
     use tb_core::Id;
 
     use crate::{DenseStorage, Storage};
 
-    #[derive(Eq, PartialEq, Debug, Clone)]
-    struct TestData {
+    #[derive(Debug)]
+    struct DropItemData<'a> {
         id: Id,
+        td: &'a TestDrop,
+        drop_item: Item<'a>,
     }
 
-    impl TestData {
-        fn new(id: Id) -> Self {
-            Self { id }
+    impl<'a> DropItemData<'a> {
+        fn new(id: Id, td: &'a TestDrop) -> Self {
+            Self {
+                id,
+                td,
+                drop_item: td.new_item().1,
+            }
         }
     }
 
-    impl Drop for TestData {
+    impl<'a> Drop for DropItemData<'a> {
         fn drop(&mut self) {
-            println!("TestData dropped. id: {}", self.id);
+            println!("TestData in VecStorage dropped. id: {}", self.id);
         }
     }
+
+    impl<'a> PartialEq for DropItemData<'a> {
+        fn eq(&self, other: &Self) -> bool {
+            self.id == other.id
+        }
+    }
+
+    impl<'a> Eq for DropItemData<'a> {}
 
     #[test]
     fn drop() {
-        unsafe {
-            let mut storage: DenseStorage<TestData> = Default::default();
-            let data_4 = TestData::new(4);
-            let data_3 = TestData::new(3);
-            let data_2 = TestData::new(2);
-            let data_8 = TestData::new(8);
-            let data_6 = TestData::new(6);
+        let td = TestDrop::new();
+        let mut storage: DenseStorage<DropItemData> = Default::default();
+        let data_4 = DropItemData::new(4, &td);
+        let data_3 = DropItemData::new(3, &td);
+        let data_2 = DropItemData::new(2, &td);
+        let data_8 = DropItemData::new(8, &td);
+        let data_6 = DropItemData::new(6, &td);
 
-            storage.insert(4, data_4.clone());
-            storage.insert(3, data_3.clone());
-            storage.insert(2, data_2.clone());
-            storage.insert(8, data_8.clone());
-            storage.insert(6, data_6.clone());
-        }
+        storage.insert(4, data_4);
+        storage.insert(3, data_3);
+        storage.insert(2, data_2);
+        storage.insert(8, data_8);
+        storage.insert(6, data_6);
+
+        storage.clear();
+        assert_eq!(5, td.num_tracked_items());
+        assert_eq!(5, td.num_dropped_items());
     }
 
     #[test]
