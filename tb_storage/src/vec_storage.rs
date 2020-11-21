@@ -29,7 +29,9 @@ impl<D> Default for VecStorage<D> {
     }
 }
 
-impl<D> Storage<D> for VecStorage<D> {
+impl<D> Storage for VecStorage<D> {
+    type Data = D;
+
     fn clear(&mut self) {
         unsafe {
             for id in self.mask.drain() {
@@ -71,6 +73,10 @@ impl<D> Storage<D> for VecStorage<D> {
         assert!(self.mask.contains(id));
         let index = util::get_index_with_base(self.base_id, id);
         unsafe { &mut *self.data.get_unchecked_mut(index).as_mut_ptr() }
+    }
+
+    fn contains(&self, id: u32) -> bool {
+        self.mask.contains(id)
     }
 }
 
@@ -137,6 +143,7 @@ mod tests {
             storage.insert(2, data_2.clone());
             storage.insert(8, data_8.clone());
             storage.insert(6, data_6.clone());
+            assert!(storage.contains(3));
             assert_eq!(storage.base_id, Some(2));
             assert_eq!(&*storage.data[0].as_ptr(), &data_2);
             assert_eq!(&*storage.data[1].as_ptr(), &data_3);
@@ -145,6 +152,7 @@ mod tests {
             assert_eq!(&*storage.data[6].as_ptr(), &data_8);
 
             storage.remove(3);
+            assert!(!storage.contains(3));
             assert_eq!(storage.base_id, Some(2));
             assert_eq!(&*storage.data[0].as_ptr(), &data_2);
             assert_eq!(&*storage.data[2].as_ptr(), &data_4);

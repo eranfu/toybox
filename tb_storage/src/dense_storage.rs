@@ -26,7 +26,9 @@ impl<D> Default for DenseStorage<D> {
     }
 }
 
-impl<D> Storage<D> for DenseStorage<D> {
+impl<D> Storage for DenseStorage<D> {
+    type Data = D;
+
     fn clear(&mut self) {
         self.mask.clear();
         self.base_id = None;
@@ -95,6 +97,10 @@ impl<D> Storage<D> for DenseStorage<D> {
                 .assume_init();
             self.data.get_unchecked_mut(index)
         }
+    }
+
+    fn contains(&self, id: u32) -> bool {
+        self.mask.contains(id)
     }
 }
 
@@ -177,6 +183,7 @@ mod tests {
             assert_eq!(*storage.get(1), 1);
             assert_eq!(*storage.get(3), 3);
             assert_eq!(*storage.get(0), 0);
+            assert!(storage.contains(3));
 
             let mut storage = DenseStorage::<i32>::default();
             storage.insert(4, 4);
@@ -212,8 +219,10 @@ mod tests {
             assert_eq!(storage.indices[2].assume_init(), 0);
             assert_eq!(storage.indices[4].assume_init(), 4);
             assert_eq!(storage.indices[6].assume_init(), 3);
+            assert!(storage.contains(3));
 
             storage.remove(3);
+            assert!(!storage.contains(3));
             assert_eq!(storage.data, vec![4, 6, 2, 8]);
             assert_eq!(storage.data_id, vec![4, 6, 2, 8]);
             assert_eq!(storage.base_id, Some(2));
