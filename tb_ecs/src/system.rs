@@ -38,25 +38,23 @@ pub struct RAW<'r, R: Resource> {
     resource: &'r R,
 }
 
-pub struct RBWStorage<'r, C: Component> {
+pub struct RBWComponents<'r, C: Component> {
     entities: &'r Entities,
     components: &'r C::Storage,
 }
 
-pub struct WriteStorage<'r, C: Component> {
+pub struct WriteComponents<'r, C: Component> {
     entities: &'r Entities,
     components: &'r mut C::Storage,
 }
 
-pub struct RAWStorage<'r, C: Component> {
+pub struct RAWComponents<'r, C: Component> {
     entities: &'r Entities,
     components: &'r C::Storage,
 }
 
 impl<'r> SystemData<'r> for () {
-    fn fetch(_world: &'r World) -> Self {
-        ()
-    }
+    fn fetch(_world: &'r World) -> Self {}
 }
 
 impl<'r, R: Resource> Deref for RBW<'r, R> {
@@ -125,7 +123,7 @@ impl<'r, R: Resource> SystemData<'r> for RAW<'r, R> {
     }
 }
 
-impl<'r, C: Component> SystemData<'r> for RBWStorage<'r, C> {
+impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
     fn fetch(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
@@ -141,7 +139,7 @@ impl<'r, C: Component> SystemData<'r> for RBWStorage<'r, C> {
     }
 }
 
-impl<'r, C: Component> SystemData<'r> for WriteStorage<'r, C> {
+impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
     fn fetch(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
@@ -157,7 +155,7 @@ impl<'r, C: Component> SystemData<'r> for WriteStorage<'r, C> {
     }
 }
 
-impl<'r, C: Component> SystemData<'r> for RAWStorage<'r, C> {
+impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
     fn fetch(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
@@ -173,10 +171,10 @@ impl<'r, C: Component> SystemData<'r> for RAWStorage<'r, C> {
     }
 }
 
-macro_rules! impl_system_data {
+macro_rules! impl_system_data_tuple {
     ($S0:ident) => {};
     ($S0:ident, $($S1:ident),+) => {
-        impl_system_data!($($S1),+);
+        impl_system_data_tuple!($($S1),+);
 
         impl<'r, $S0: SystemData<'r>, $($S1: SystemData<'r>),+> SystemData<'r> for ($S0, $($S1),+) {
             fn fetch(world: &'r World) -> Self {
@@ -213,7 +211,7 @@ macro_rules! impl_system_data {
     }
 }
 
-impl_system_data!(S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15);
+impl_system_data_tuple!(S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15);
 
 #[cfg(test)]
 mod tests {
