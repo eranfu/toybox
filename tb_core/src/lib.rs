@@ -2,8 +2,10 @@
 
 use std::backtrace::Backtrace;
 use std::fmt::{Debug, Display, Formatter};
+use std::ops::{Deref, DerefMut};
 
-pub type Id = u32;
+#[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
+pub struct Id(u32);
 
 #[derive(Debug)]
 pub struct AnyError {
@@ -12,6 +14,32 @@ pub struct AnyError {
 }
 
 pub type AnyErrorResult<T> = Result<T, AnyError>;
+
+impl Deref for Id {
+    type Target = u32;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for Id {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl From<u32> for Id {
+    fn from(id: u32) -> Self {
+        Self(id)
+    }
+}
+
+impl Display for Id {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", *self)
+    }
+}
 
 impl Display for AnyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {

@@ -1,4 +1,7 @@
+use hibitset::BitSet;
+
 use generation::Generation;
+use tb_storage::{Storage, VecStorage};
 
 mod generation;
 
@@ -9,4 +12,12 @@ pub struct Entity {
     gen: Generation,
 }
 
-pub(crate) struct Entities {}
+pub(crate) struct Entities {
+    generations: VecStorage<Generation>,
+}
+
+impl Entities {
+    pub(crate) fn mask(&self) -> &BitSet {
+        self.generations.mask()
+    }
+}

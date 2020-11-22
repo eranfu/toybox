@@ -35,7 +35,7 @@ impl<D> Storage for VecStorage<D> {
     fn clear(&mut self) {
         unsafe {
             for id in self.mask.drain() {
-                let index = util::get_index_with_base(self.base_id, id);
+                let index = util::get_index_with_base(self.base_id, id.into());
                 let data = self.data.get_unchecked_mut(index).as_mut_ptr();
                 ptr::drop_in_place(data);
             }
@@ -45,8 +45,8 @@ impl<D> Storage for VecStorage<D> {
     }
 
     fn insert(&mut self, id: Id, data: D) -> &mut D {
-        assert!(!self.mask.contains(id));
-        self.mask.add(id);
+        assert!(!self.mask.contains(*id));
+        self.mask.add(*id);
         unsafe {
             let index = util::setup_index_with_base(&mut self.base_id, &mut self.data, id);
             self.data.get_unchecked_mut(index).as_mut_ptr().write(data);
@@ -55,8 +55,8 @@ impl<D> Storage for VecStorage<D> {
     }
 
     fn remove(&mut self, id: Id) {
-        assert!(self.mask.contains(id));
-        self.mask.remove(id);
+        assert!(self.mask.contains(*id));
+        self.mask.remove(*id);
         let index = util::get_index_with_base(self.base_id, id);
         unsafe {
             ptr::drop_in_place(self.data.get_unchecked_mut(index).as_mut_ptr());
@@ -64,19 +64,23 @@ impl<D> Storage for VecStorage<D> {
     }
 
     fn get(&self, id: Id) -> &D {
-        assert!(self.mask.contains(id));
+        assert!(self.mask.contains(*id));
         let index = util::get_index_with_base(self.base_id, id);
         unsafe { &*self.data.get_unchecked(index).as_ptr() }
     }
 
-    fn get_mut(&mut self, id: Id) -> &mut D {
-        assert!(self.mask.contains(id));
+    fn get_mut(&self, id: Id) -> &mut D {
+        assert!(self.mask.contains(*id));
         let index = util::get_index_with_base(self.base_id, id);
-        unsafe { &mut *self.data.get_unchecked_mut(index).as_mut_ptr() }
+        unsafe { &mut *(self.data.get_unchecked(index).as_ptr() as *mut D) }
     }
 
-    fn contains(&self, id: u32) -> bool {
-        self.mask.contains(id)
+    fn contains(&self, id: Id) -> bool {
+        self.mask.contains(*id)
+    }
+
+    fn mask(&self) -> &BitSet {
+        &self.mask
     }
 }
 
@@ -133,34 +137,34 @@ mod tests {
         unsafe {
             let td = TestDrop::new();
             let mut storage = VecStorage::<DropItemData>::default();
-            let data_4 = DropItemData::new(4, &td);
-            let data_3 = DropItemData::new(3, &td);
-            let data_2 = DropItemData::new(2, &td);
-            let data_8 = DropItemData::new(8, &td);
-            let data_6 = DropItemData::new(6, &td);
-            storage.insert(4, data_4.clone());
-            storage.insert(3, data_3.clone());
-            storage.insert(2, data_2.clone());
-            storage.insert(8, data_8.clone());
-            storage.insert(6, data_6.clone());
-            assert!(storage.contains(3));
-            assert_eq!(storage.base_id, Some(2));
+            let data_4 = DropItemData::new(4.into(), &td);
+            let data_3 = DropItemData::new(3.into(), &td);
+            let data_2 = DropItemData::new(2.into(), &td);
+            let data_8 = DropItemData::new(8.into(), &td);
+            let data_6 = DropItemData::new(6.into(), &td);
+            storage.insert(4.into(), data_4.clone());
+            storage.insert(3.into(), data_3.clone());
+            storage.insert(2.into(), data_2.clone());
+            storage.insert(8.into(), data_8.clone());
+            storage.insert(6.into(), data_6.clone());
+            assert!(storage.contains(3.into()));
+            assert_eq!(storage.base_id, Some(2.into()));
             assert_eq!(&*storage.data[0].as_ptr(), &data_2);
             assert_eq!(&*storage.data[1].as_ptr(), &data_3);
             assert_eq!(&*storage.data[2].as_ptr(), &data_4);
             assert_eq!(&*storage.data[4].as_ptr(), &data_6);
             assert_eq!(&*storage.data[6].as_ptr(), &data_8);
 
-            storage.remove(3);
-            assert!(!storage.contains(3));
-            assert_eq!(storage.base_id, Some(2));
+            storage.remove(3.into());
+            assert!(!storage.contains(3.into()));
+            assert_eq!(storage.base_id, Some(2.into()));
             assert_eq!(&*storage.data[0].as_ptr(), &data_2);
             assert_eq!(&*storage.data[2].as_ptr(), &data_4);
             assert_eq!(&*storage.data[4].as_ptr(), &data_6);
             assert_eq!(&*storage.data[6].as_ptr(), &data_8);
 
-            storage.remove(8);
-            assert_eq!(storage.base_id, Some(2));
+            storage.remove(8.into());
+            assert_eq!(storage.base_id, Some(2.into()));
             assert_eq!(&*storage.data[0].as_ptr(), &data_2);
             assert_eq!(&*storage.data[2].as_ptr(), &data_4);
             assert_eq!(&*storage.data[4].as_ptr(), &data_6);
@@ -175,7 +179,7 @@ mod tests {
     #[should_panic(expected = "assertion failed: !self.mask.contains(id)")]
     fn duplicate_insert() {
         let mut storage = VecStorage::default();
-        storage.insert(3, 3);
-        storage.insert(3, 5);
+        storage.insert(3.into(), 3);
+        storage.insert(3.into(), 5);
     }
 }

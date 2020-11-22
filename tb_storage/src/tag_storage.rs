@@ -27,26 +27,30 @@ impl<T: Default> Storage for TagStorage<T> {
     }
 
     fn insert(&mut self, id: Id, _data: Self::Data) -> &mut Self::Data {
-        assert!(!self.mask.add(id));
+        assert!(!self.mask.add(*id));
         &mut self.data
     }
 
     fn remove(&mut self, id: Id) {
-        assert!(self.mask.remove(id));
+        assert!(self.mask.remove(*id));
     }
 
     fn get(&self, id: Id) -> &Self::Data {
-        assert!(self.mask.contains(id));
+        assert!(self.mask.contains(*id));
         &self.data
     }
 
-    fn get_mut(&mut self, id: Id) -> &mut Self::Data {
-        assert!(self.mask.contains(id));
-        &mut self.data
+    fn get_mut(&self, id: Id) -> &mut Self::Data {
+        assert!(self.mask.contains(*id));
+        unsafe { &mut *(&self.data as *const Self::Data as *mut Self::Data) }
     }
 
     fn contains(&self, id: Id) -> bool {
-        self.mask.contains(id)
+        self.mask.contains(*id)
+    }
+
+    fn mask(&self) -> &BitSet {
+        &self.mask
     }
 }
 
@@ -60,21 +64,21 @@ mod tests {
     #[test]
     fn it_works() {
         let mut storage = TagStorage::default();
-        storage.insert(2, Tag);
-        assert!(storage.contains(2));
-        assert!(!storage.contains(3));
-        storage.insert(3, Tag);
-        assert!(storage.contains(3));
-        storage.remove(2);
-        assert!(!storage.contains(2));
+        storage.insert(2.into(), Tag);
+        assert!(storage.contains(2.into()));
+        assert!(!storage.contains(3.into()));
+        storage.insert(3.into(), Tag);
+        assert!(storage.contains(3.into()));
+        storage.remove(2.into());
+        assert!(!storage.contains(2.into()));
     }
 
     #[test]
     #[should_panic(expected = "assertion failed: !self.mask.add(id)")]
     fn duplicate_insert() {
         let mut storage = TagStorage::default();
-        storage.insert(2, Tag);
-        storage.insert(2, Tag);
+        storage.insert(2.into(), Tag);
+        storage.insert(2.into(), Tag);
     }
 
     #[derive(Default)]

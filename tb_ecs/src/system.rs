@@ -1,7 +1,5 @@
 use std::ops::{Deref, DerefMut};
 
-use crate::component::Component;
-use crate::entity::Entities;
 use crate::world::{Resource, ResourceId};
 use crate::World;
 
@@ -36,21 +34,6 @@ pub struct Write<'r, R: Resource> {
 /// Read after write
 pub struct RAW<'r, R: Resource> {
     resource: &'r R,
-}
-
-pub struct RBWComponents<'r, C: Component> {
-    entities: &'r Entities,
-    components: &'r C::Storage,
-}
-
-pub struct WriteComponents<'r, C: Component> {
-    entities: &'r Entities,
-    components: &'r mut C::Storage,
-}
-
-pub struct RAWComponents<'r, C: Component> {
-    entities: &'r Entities,
-    components: &'r C::Storage,
 }
 
 impl<'r> SystemData<'r> for () {
@@ -120,54 +103,6 @@ impl<'r, R: Resource> SystemData<'r> for RAW<'r, R> {
 
     fn reads_after_write() -> Vec<ResourceId> {
         vec![ResourceId::new::<R>()]
-    }
-}
-
-impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
-    fn fetch(world: &'r World) -> Self {
-        Self {
-            entities: world.fetch(),
-            components: world.fetch(),
-        }
-    }
-
-    fn reads_before_write() -> Vec<ResourceId> {
-        vec![
-            ResourceId::new::<Entities>(),
-            ResourceId::new::<C::Storage>(),
-        ]
-    }
-}
-
-impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
-    fn fetch(world: &'r World) -> Self {
-        Self {
-            entities: world.fetch(),
-            components: world.fetch_mut(),
-        }
-    }
-
-    fn writes() -> Vec<ResourceId> {
-        vec![
-            ResourceId::new::<Entities>(),
-            ResourceId::new::<C::Storage>(),
-        ]
-    }
-}
-
-impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
-    fn fetch(world: &'r World) -> Self {
-        Self {
-            entities: world.fetch(),
-            components: world.fetch(),
-        }
-    }
-
-    fn reads_after_write() -> Vec<ResourceId> {
-        vec![
-            ResourceId::new::<Entities>(),
-            ResourceId::new::<C::Storage>(),
-        ]
     }
 }
 
