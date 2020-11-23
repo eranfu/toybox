@@ -1,99 +1,67 @@
 use hibitset::{BitIter, BitSet, BitSetLike};
 
 use tb_core::Id;
-use tb_storage::Storage;
+use tb_storage::StorageItems;
 
-use crate::component::{RAWComponents, RBWComponents, WriteComponents};
+use crate::component::{ReadComponents, WriteComponents};
+use crate::system::ReadOrder;
 use crate::Component;
 
 trait Join: Sized {
-    type Item;
-    type BitSetLike: BitSetLike;
-    fn join(self) -> JoinIterator<Self, Self::BitSetLike>;
-    fn get(&self, id: Id) -> Self::Item;
+    type BitSet: BitSetLike;
+    type Component;
+    type Components;
+    fn join(self) -> JoinIterator<Self> {
+        let (mask, components) = self.open();
+        JoinIterator {
+            mask_iter: mask.iter(),
+            components,
+        }
+    }
+    fn open(self) -> (Self::BitSet, Self::Components);
+    fn get(components: &mut Self::Components, id: Id) -> Self::Component;
 }
 
-struct JoinIterator<J, B>
-where
-    B: BitSetLike,
-    J: Join<BitSetLike = B>,
-{
-    mask_iter: BitIter<B>,
-    join: J,
+struct JoinIterator<J: Join> {
+    mask_iter: BitIter<J::BitSet>,
+    components: J::Components,
 }
 
-trait ComponentsData<'r> {
-    type Component: 'r;
-    fn get(&'r self, id: Id) -> Self::Component;
-    fn mask(&'r self) -> &'r BitSet;
-}
-
-impl<'r, C: Component> ComponentsData<'r> for &'r RBWComponents<'r, C> {
-    type Component = &'r C;
-
-    fn get(&self, id: Id) -> Self::Component {
-        self.components().get(id)
-    }
-
-    fn mask(&self) -> &BitSet {
-        self.components().mask()
-    }
-}
-
-impl<'r, C: Component> ComponentsData<'r> for &'r mut WriteComponents<'r, C> {
-    type Component = &'r mut C;
-
-    fn get(&'r self, id: Id) -> Self::Component {
-        self.components().get_mut(id)
-    }
-
-    fn mask(&'r self) -> &'r BitSet {
-        self.components().mask()
-    }
-}
-
-impl<'r, C: Component> ComponentsData<'r> for &'r RAWComponents<'r, C> {
-    type Component = &'r C;
-
-    fn get(&self, id: Id) -> Self::Component {
-        self.components().get(id)
-    }
-
-    fn mask(&self) -> &BitSet {
-        self.components().mask()
-    }
-}
-
-impl<J, B> Iterator for JoinIterator<J, B>
-where
-    B: BitSetLike,
-    J: Join<BitSetLike = B>,
-{
-    type Item = J::Item;
+impl<J: Join> Iterator for JoinIterator<J> {
+    type Item = J::Component;
 
     fn next(&mut self) -> Option<Self::Item> {
-        match self.mask_iter.next() {
-            None => None,
-            Some(id) => Some(self.join.get(id.into())),
-        }
+        self.mask_iter
+            .next()
+            .map(|id| J::get(&mut self.components, id.into()))
     }
 }
 
-impl<'r, D> Join for &'r D
-where
-    D: ComponentsData<'r>,
-{
-    type Item = D::Component;
-    type BitSetLike = &'r BitSet;
+impl<'r, C: Component, R: ReadOrder> Join for &'r ReadComponents<'r, C, R> {
+    type BitSet = &'r BitSet;
+    type Component = &'r C;
+    type Components = &'r C::Storage;
 
-    fn join(self) -> JoinIterator<Self, Self::BitSetLike> {
-        JoinIterator {
-            mask_iter: self.mask().iter(),
-            join: self,
-        }
+    fn open(self) -> (Self::BitSet, Self::Components) {
+        self.components.storage.open()
     }
 
-    fn get(&self, id: Id) -> Self::Item {
-        ComponentsData::get(*self, id)
+    fn get(components: &mut Self::Components, id: Id) -> Self::Component {
+        unsafe { components.get(id) }
+    }
+}
+
+impl<'r, C: Component> Join for &'r mut WriteComponents<'r, C> {
+    type BitSet = &'r BitSet;
+    type Component = &'r mut C;
+    type Components = &'r mut C::Storage;
+
+    fn open(self) -> (Self::BitSet, Self::Components) {
+        self.components.storage.open_mut()
+    }
+
+    fn get(components: &mut Self::Components, id: Id) -> Self::Component {
+        let components: *mut Self::Components = components as *mut Self::Components;
+        unsafe { (*components).get_mut(id) }
     }
 }

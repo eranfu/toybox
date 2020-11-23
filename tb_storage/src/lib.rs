@@ -5,15 +5,75 @@ pub use tag_storage::TagStorage;
 use tb_core::Id;
 pub use vec_storage::VecStorage;
 
-pub trait Storage {
+#[derive(Default)]
+pub struct Storage<I: StorageItems> {
+    mask: BitSet,
+    items: I,
+}
+
+pub trait StorageItems {
     type Data;
-    fn clear(&mut self);
-    fn insert(&mut self, id: Id, data: Self::Data) -> &mut Self::Data;
-    fn remove(&mut self, id: Id);
-    fn get(&self, id: Id) -> &Self::Data;
-    fn get_mut(&self, id: Id) -> &mut Self::Data;
-    fn contains(&self, id: Id) -> bool;
-    fn mask(&self) -> &BitSet;
+    /// # Safety
+    ///
+    /// Given mask must means which data there is.
+    unsafe fn clear(&mut self, mask: &BitSet);
+
+    /// # Safety
+    ///
+    /// There should be no data associated with given id.
+    unsafe fn insert(&mut self, id: Id, data: Self::Data) -> &mut Self::Data;
+
+    /// # Safety
+    ///
+    /// There should be data associated with given id.
+    unsafe fn remove(&mut self, id: Id);
+
+    /// # Safety
+    ///
+    /// There should be data associated with given id.
+    unsafe fn get(&self, id: Id) -> &Self::Data;
+
+    /// # Safety
+    ///
+    /// There should be data associated with given id.
+    unsafe fn get_mut(&mut self, id: Id) -> &mut Self::Data;
+}
+
+impl<I: StorageItems> Storage<I> {
+    pub fn clear(&mut self) {
+        unsafe { self.items.clear(&self.mask) }
+    }
+    pub fn open(&self) -> (&BitSet, &I) {
+        (&self.mask, &self.items)
+    }
+    pub fn open_mut(&mut self) -> (&BitSet, &mut I) {
+        (&self.mask, &mut self.items)
+    }
+    pub fn contains(&self, id: Id) -> bool {
+        self.mask.contains(*id)
+    }
+    pub fn insert(&mut self, id: Id, data: I::Data) -> &mut I::Data {
+        assert!(!self.mask.add(*id));
+        unsafe { self.items.insert(id, data) }
+    }
+    pub fn remove(&mut self, id: Id) {
+        assert!(self.mask.remove(*id));
+        unsafe { self.items.remove(id) }
+    }
+    pub fn get(&self, id: Id) -> &I::Data {
+        assert!(self.contains(id));
+        unsafe { self.items.get(id) }
+    }
+    pub fn get_mut(&mut self, id: Id) -> &mut I::Data {
+        assert!(self.contains(id));
+        unsafe { self.items.get_mut(id) }
+    }
+}
+
+impl<I: StorageItems> Drop for Storage<I> {
+    fn drop(&mut self) {
+        self.clear();
+    }
 }
 
 mod dense_storage;

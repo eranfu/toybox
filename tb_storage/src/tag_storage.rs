@@ -2,61 +2,46 @@ use hibitset::BitSet;
 
 use tb_core::Id;
 
-use crate::Storage;
+use crate::{Storage, StorageItems};
 
-pub struct TagStorage<T: Default> {
-    mask: BitSet,
+pub struct TagStorageItems<T: Default> {
     data: T,
 }
 
-impl<T: Default> Default for TagStorage<T> {
+pub type TagStorage<D> = Storage<TagStorageItems<D>>;
+
+impl<T: Default> Default for TagStorageItems<T> {
     fn default() -> Self {
         assert_eq!(std::mem::size_of::<T>(), 0);
         Self {
-            mask: Default::default(),
             data: Default::default(),
         }
     }
 }
 
-impl<T: Default> Storage for TagStorage<T> {
+impl<T: Default> StorageItems for TagStorageItems<T> {
     type Data = T;
 
-    fn clear(&mut self) {
-        self.mask.clear();
-    }
+    unsafe fn clear(&mut self, _mask: &BitSet) {}
 
-    fn insert(&mut self, id: Id, _data: Self::Data) -> &mut Self::Data {
-        assert!(!self.mask.add(*id));
+    unsafe fn insert(&mut self, _id: Id, _data: Self::Data) -> &mut Self::Data {
         &mut self.data
     }
 
-    fn remove(&mut self, id: Id) {
-        assert!(self.mask.remove(*id));
-    }
+    unsafe fn remove(&mut self, _id: Id) {}
 
-    fn get(&self, id: Id) -> &Self::Data {
-        assert!(self.mask.contains(*id));
+    unsafe fn get(&self, _id: Id) -> &Self::Data {
         &self.data
     }
 
-    fn get_mut(&self, id: Id) -> &mut Self::Data {
-        assert!(self.mask.contains(*id));
-        unsafe { &mut *(&self.data as *const Self::Data as *mut Self::Data) }
-    }
-
-    fn contains(&self, id: Id) -> bool {
-        self.mask.contains(*id)
-    }
-
-    fn mask(&self) -> &BitSet {
-        &self.mask
+    unsafe fn get_mut(&mut self, _id: Id) -> &mut Self::Data {
+        &mut self.data
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::{Storage, TagStorage};
+    use crate::TagStorage;
 
     #[derive(Default)]
     struct Tag;
@@ -74,7 +59,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "assertion failed: !self.mask.add(id)")]
+    #[should_panic(expected = "assertion failed: !self.mask.add(*id)")]
     fn duplicate_insert() {
         let mut storage = TagStorage::default();
         storage.insert(2.into(), Tag);

@@ -1,86 +1,61 @@
 use std::mem::MaybeUninit;
 use std::ptr;
 
-use hibitset::{BitSet, DrainableBitSet};
+use hibitset::{BitSet, BitSetLike};
 
 use tb_core::Id;
 
-use crate::{util, Storage};
+use crate::{util, Storage, StorageItems};
 
-pub struct VecStorage<D> {
-    mask: BitSet,
+pub struct VecStorageItems<D> {
     base_id: Option<Id>,
     data: Vec<MaybeUninit<D>>,
 }
 
-impl<D> Drop for VecStorage<D> {
-    fn drop(&mut self) {
-        self.clear();
-    }
-}
+pub type VecStorage<D> = Storage<VecStorageItems<D>>;
 
-impl<D> Default for VecStorage<D> {
+impl<D> Default for VecStorageItems<D> {
     fn default() -> Self {
         Self {
-            mask: Default::default(),
             base_id: Default::default(),
             data: Default::default(),
         }
     }
 }
 
-impl<D> Storage for VecStorage<D> {
+impl<D> StorageItems for VecStorageItems<D> {
     type Data = D;
 
-    fn clear(&mut self) {
-        unsafe {
-            for id in self.mask.drain() {
-                let index = util::get_index_with_base(self.base_id, id.into());
-                let data = self.data.get_unchecked_mut(index).as_mut_ptr();
-                ptr::drop_in_place(data);
-            }
-            self.data.set_len(0);
+    unsafe fn clear(&mut self, mask: &BitSet) {
+        for id in mask.iter() {
+            let index = util::get_index_with_base(self.base_id, id.into());
+            let data = self.data.get_unchecked_mut(index).as_mut_ptr();
+            ptr::drop_in_place(data);
         }
+        self.data.set_len(0);
         self.base_id = None;
     }
 
-    fn insert(&mut self, id: Id, data: D) -> &mut D {
-        assert!(!self.mask.contains(*id));
-        self.mask.add(*id);
-        unsafe {
-            let index = util::setup_index_with_base(&mut self.base_id, &mut self.data, id);
-            self.data.get_unchecked_mut(index).as_mut_ptr().write(data);
-            &mut *self.data.get_unchecked_mut(index).as_mut_ptr()
-        }
+    unsafe fn insert(&mut self, id: Id, data: D) -> &mut D {
+        let index = util::setup_index_with_base(&mut self.base_id, &mut self.data, id);
+        self.data.get_unchecked_mut(index).as_mut_ptr().write(data);
+        &mut *self.data.get_unchecked_mut(index).as_mut_ptr()
     }
 
-    fn remove(&mut self, id: Id) {
-        assert!(self.mask.contains(*id));
-        self.mask.remove(*id);
+    unsafe fn remove(&mut self, id: Id) {
         let index = util::get_index_with_base(self.base_id, id);
-        unsafe {
-            ptr::drop_in_place(self.data.get_unchecked_mut(index).as_mut_ptr());
-        }
+
+        ptr::drop_in_place(self.data.get_unchecked_mut(index).as_mut_ptr());
     }
 
-    fn get(&self, id: Id) -> &D {
-        assert!(self.mask.contains(*id));
+    unsafe fn get(&self, id: Id) -> &D {
         let index = util::get_index_with_base(self.base_id, id);
-        unsafe { &*self.data.get_unchecked(index).as_ptr() }
+        &*self.data.get_unchecked(index).as_ptr()
     }
 
-    fn get_mut(&self, id: Id) -> &mut D {
-        assert!(self.mask.contains(*id));
+    unsafe fn get_mut(&mut self, id: Id) -> &mut D {
         let index = util::get_index_with_base(self.base_id, id);
-        unsafe { &mut *(self.data.get_unchecked(index).as_ptr() as *mut D) }
-    }
-
-    fn contains(&self, id: Id) -> bool {
-        self.mask.contains(*id)
-    }
-
-    fn mask(&self) -> &BitSet {
-        &self.mask
+        &mut *self.data.get_unchecked_mut(index).as_mut_ptr()
     }
 }
 
@@ -90,7 +65,7 @@ mod tests {
 
     use tb_core::Id;
 
-    use crate::{Storage, VecStorage};
+    use crate::VecStorage;
 
     #[derive(Debug)]
     struct DropItemData<'a> {
@@ -148,26 +123,26 @@ mod tests {
             storage.insert(8.into(), data_8.clone());
             storage.insert(6.into(), data_6.clone());
             assert!(storage.contains(3.into()));
-            assert_eq!(storage.base_id, Some(2.into()));
-            assert_eq!(&*storage.data[0].as_ptr(), &data_2);
-            assert_eq!(&*storage.data[1].as_ptr(), &data_3);
-            assert_eq!(&*storage.data[2].as_ptr(), &data_4);
-            assert_eq!(&*storage.data[4].as_ptr(), &data_6);
-            assert_eq!(&*storage.data[6].as_ptr(), &data_8);
+            assert_eq!(storage.items.base_id, Some(2.into()));
+            assert_eq!(&*storage.items.data[0].as_ptr(), &data_2);
+            assert_eq!(&*storage.items.data[1].as_ptr(), &data_3);
+            assert_eq!(&*storage.items.data[2].as_ptr(), &data_4);
+            assert_eq!(&*storage.items.data[4].as_ptr(), &data_6);
+            assert_eq!(&*storage.items.data[6].as_ptr(), &data_8);
 
             storage.remove(3.into());
             assert!(!storage.contains(3.into()));
-            assert_eq!(storage.base_id, Some(2.into()));
-            assert_eq!(&*storage.data[0].as_ptr(), &data_2);
-            assert_eq!(&*storage.data[2].as_ptr(), &data_4);
-            assert_eq!(&*storage.data[4].as_ptr(), &data_6);
-            assert_eq!(&*storage.data[6].as_ptr(), &data_8);
+            assert_eq!(storage.items.base_id, Some(2.into()));
+            assert_eq!(&*storage.items.data[0].as_ptr(), &data_2);
+            assert_eq!(&*storage.items.data[2].as_ptr(), &data_4);
+            assert_eq!(&*storage.items.data[4].as_ptr(), &data_6);
+            assert_eq!(&*storage.items.data[6].as_ptr(), &data_8);
 
             storage.remove(8.into());
-            assert_eq!(storage.base_id, Some(2.into()));
-            assert_eq!(&*storage.data[0].as_ptr(), &data_2);
-            assert_eq!(&*storage.data[2].as_ptr(), &data_4);
-            assert_eq!(&*storage.data[4].as_ptr(), &data_6);
+            assert_eq!(storage.items.base_id, Some(2.into()));
+            assert_eq!(&*storage.items.data[0].as_ptr(), &data_2);
+            assert_eq!(&*storage.items.data[2].as_ptr(), &data_4);
+            assert_eq!(&*storage.items.data[4].as_ptr(), &data_6);
 
             drop(storage);
             assert_eq!(10, td.num_tracked_items());
@@ -176,7 +151,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "assertion failed: !self.mask.contains(id)")]
+    #[should_panic(expected = "assertion failed: !self.mask.add(*id)")]
     fn duplicate_insert() {
         let mut storage = VecStorage::default();
         storage.insert(3.into(), 3);

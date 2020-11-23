@@ -1,61 +1,50 @@
-use tb_storage::Storage;
+use std::marker::PhantomData;
+
+use tb_storage::{Storage, StorageItems};
 
 use crate::entity::Entities;
+use crate::system::{ReadAfterWrite, ReadBeforeWrite, ReadOrder};
 use crate::world::ResourceId;
 use crate::{SystemData, World};
 
 pub trait Component: 'static + Sized {
-    type Storage: Storage<Data = Self>;
+    type Storage: StorageItems<Data = Self>;
 }
 
-pub struct RBWComponents<'r, C: Component> {
+pub(crate) struct Components<'r, C, S: 'r> {
     entities: &'r Entities,
-    components: &'r C::Storage,
+    pub(crate) storage: S,
+    _phantom: PhantomData<C>,
+}
+
+pub struct ReadComponents<'r, C: Component, R: ReadOrder> {
+    pub(crate) components: Components<'r, &'r C, &'r Storage<C::Storage>>,
+    _phantom: PhantomData<R>,
 }
 
 pub struct WriteComponents<'r, C: Component> {
-    entities: &'r Entities,
-    components: &'r mut C::Storage,
+    pub(crate) components: Components<'r, &'r mut C, &'r mut Storage<C::Storage>>,
 }
 
-pub struct RAWComponents<'r, C: Component> {
-    entities: &'r Entities,
-    components: &'r C::Storage,
-}
+pub type RBWComponents<'r, C> = ReadComponents<'r, C, ReadBeforeWrite>;
+pub type RAWComponents<'r, C> = ReadComponents<'r, C, ReadAfterWrite>;
 
-impl<'r, C: Component> RBWComponents<'r, C> {
-    pub(crate) fn components(&'r self) -> &'r C::Storage {
-        &self.components
-    }
-    pub(crate) fn entities(&'r self) -> &'r Entities {
-        &self.entities
-    }
-}
-
-impl<'r, C: Component> WriteComponents<'r, C> {
-    pub(crate) fn components(&'r self) -> &'r C::Storage {
-        &self.components
-    }
-    fn entities(&'r self) -> &'r Entities {
-        &self.entities
-    }
-}
-
-impl<'r, C: Component> RAWComponents<'r, C> {
-    pub(crate) fn components(&'r self) -> &'r C::Storage {
-        &self.components
-    }
-    fn entities(&'r self) -> &'r Entities {
-        &self.entities
+impl<'r, C: Component, R: ReadOrder> ReadComponents<'r, C, R> {
+    fn new(world: &'r World) -> Self {
+        Self {
+            components: Components {
+                entities: world.fetch(),
+                storage: world.fetch(),
+                _phantom: Default::default(),
+            },
+            _phantom: Default::default(),
+        }
     }
 }
 
 impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
     fn fetch(world: &'r World) -> Self {
-        Self {
-            entities: world.fetch(),
-            components: world.fetch(),
-        }
+        Self::new(world)
     }
 
     fn reads_before_write() -> Vec<ResourceId> {
@@ -69,8 +58,11 @@ impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
 impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
     fn fetch(world: &'r World) -> Self {
         Self {
-            entities: world.fetch(),
-            components: world.fetch_mut(),
+            components: Components {
+                entities: world.fetch(),
+                storage: world.fetch_mut(),
+                _phantom: Default::default(),
+            },
         }
     }
 
@@ -84,10 +76,7 @@ impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
 
 impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
     fn fetch(world: &'r World) -> Self {
-        Self {
-            entities: world.fetch(),
-            components: world.fetch(),
-        }
+        Self::new(world)
     }
 
     fn reads_after_write() -> Vec<ResourceId> {

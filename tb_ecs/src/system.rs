@@ -36,6 +36,16 @@ pub struct RAW<'r, R: Resource> {
     resource: &'r R,
 }
 
+pub trait ReadOrder {}
+
+pub struct ReadBeforeWrite;
+
+pub struct ReadAfterWrite;
+
+impl ReadOrder for ReadBeforeWrite {}
+
+impl ReadOrder for ReadAfterWrite {}
+
 impl<'r> SystemData<'r> for () {
     fn fetch(_world: &'r World) -> Self {}
 }
