@@ -91,51 +91,51 @@ mod tests {
     use crate::DenseStorage;
 
     #[derive(Debug)]
-    struct DropItemData<'a> {
+    struct DenseStorageDropItemData<'a> {
         id: Id,
         td: &'a TestDrop,
         drop_item: Item<'a>,
     }
 
-    impl<'a> DropItemData<'a> {
-        fn new(id: Id, td: &'a TestDrop) -> Self {
+    impl<'a> DenseStorageDropItemData<'a> {
+        fn new(id: impl Into<Id>, td: &'a TestDrop) -> Self {
             Self {
-                id,
+                id: id.into(),
                 td,
                 drop_item: td.new_item().1,
             }
         }
     }
 
-    impl<'a> Drop for DropItemData<'a> {
+    impl<'a> Drop for DenseStorageDropItemData<'a> {
         fn drop(&mut self) {
             println!("TestData in VecStorage dropped. id: {}", self.id);
         }
     }
 
-    impl<'a> PartialEq for DropItemData<'a> {
+    impl<'a> PartialEq for DenseStorageDropItemData<'a> {
         fn eq(&self, other: &Self) -> bool {
             self.id == other.id
         }
     }
 
-    impl<'a> Eq for DropItemData<'a> {}
+    impl<'a> Eq for DenseStorageDropItemData<'a> {}
 
     #[test]
     fn drop() {
         let td = TestDrop::new();
-        let mut storage: DenseStorage<DropItemData> = Default::default();
-        let data_4 = DropItemData::new(4.into(), &td);
-        let data_3 = DropItemData::new(3.into(), &td);
-        let data_2 = DropItemData::new(2.into(), &td);
-        let data_8 = DropItemData::new(8.into(), &td);
-        let data_6 = DropItemData::new(6.into(), &td);
+        let mut storage: DenseStorage<DenseStorageDropItemData> = Default::default();
+        let data_4 = DenseStorageDropItemData::new(4u32, &td);
+        let data_3 = DenseStorageDropItemData::new(3u32, &td);
+        let data_2 = DenseStorageDropItemData::new(2u32, &td);
+        let data_8 = DenseStorageDropItemData::new(8u32, &td);
+        let data_6 = DenseStorageDropItemData::new(6u32, &td);
 
-        storage.insert(4.into(), data_4);
-        storage.insert(3.into(), data_3);
-        storage.insert(2.into(), data_2);
-        storage.insert(8.into(), data_8);
-        storage.insert(6.into(), data_6);
+        storage.insert(4u32.into(), data_4);
+        storage.insert(3u32.into(), data_3);
+        storage.insert(2u32.into(), data_2);
+        storage.insert(8u32.into(), data_8);
+        storage.insert(6u32.into(), data_6);
 
         storage.clear();
         assert_eq!(5, td.num_tracked_items());
@@ -146,35 +146,41 @@ mod tests {
     fn insert() {
         unsafe {
             let mut storage = DenseStorage::<i32>::default();
-            assert_eq!(*storage.insert(3.into(), 3), 3);
+            assert_eq!(*storage.insert(3u32.into(), 3), 3);
             assert_eq!(storage.items.indices.len(), 1);
-            assert_eq!(*storage.get(3.into()), 3);
-            assert_eq!(*storage.get_mut(3.into()), 3);
-            assert_eq!(*storage.insert(1.into(), 1), 1);
+            assert_eq!(*storage.get(3u32.into()), 3);
+            assert_eq!(*storage.get_mut(3u32.into()), 3);
+            assert_eq!(*storage.insert(1u32.into(), 1), 1);
             assert_eq!(storage.items.indices.len(), 3);
             assert_eq!(storage.items.indices.get_unchecked_mut(0).assume_init(), 1);
             assert_eq!(storage.items.indices.get_unchecked_mut(2).assume_init(), 0);
-            assert_eq!(*storage.get(1.into()), 1);
-            assert_eq!(*storage.get(3.into()), 3);
-            assert_eq!(*storage.insert(0.into(), 0), 0);
+            assert_eq!(*storage.get(1u32.into()), 1);
+            assert_eq!(*storage.get(3u32.into()), 3);
+            assert_eq!(*storage.insert(0u32.into(), 0), 0);
             assert_eq!(storage.items.indices.len(), 4);
-            assert_eq!(*storage.get(1.into()), 1);
-            assert_eq!(*storage.get(3.into()), 3);
-            assert_eq!(*storage.get(0.into()), 0);
-            assert!(storage.contains(3.into()));
+            assert_eq!(*storage.get(1u32.into()), 1);
+            assert_eq!(*storage.get(3u32.into()), 3);
+            assert_eq!(*storage.get(0u32.into()), 0);
+            assert!(storage.contains(3u32.into()));
 
             let mut storage = DenseStorage::<i32>::default();
-            storage.insert(4.into(), 4);
-            storage.insert(3.into(), 3);
-            storage.insert(2.into(), 2);
-            storage.insert(8.into(), 8);
-            storage.insert(6.into(), 6);
+            storage.insert(4u32.into(), 4);
+            storage.insert(3u32.into(), 3);
+            storage.insert(2u32.into(), 2);
+            storage.insert(8u32.into(), 8);
+            storage.insert(6u32.into(), 6);
             assert_eq!(storage.items.data, vec![4, 3, 2, 8, 6]);
             assert_eq!(
                 storage.items.data_id,
-                vec![4.into(), 3.into(), 2.into(), 8.into(), 6.into()]
+                vec![
+                    4u32.into(),
+                    3u32.into(),
+                    2u32.into(),
+                    8u32.into(),
+                    6u32.into()
+                ]
             );
-            assert_eq!(storage.items.base_id, Some(2.into()));
+            assert_eq!(storage.items.base_id, Some(2u32.into()));
             assert_eq!(storage.items.indices[0].assume_init(), 2);
             assert_eq!(storage.items.indices[1].assume_init(), 1);
             assert_eq!(storage.items.indices[2].assume_init(), 0);
@@ -187,41 +193,50 @@ mod tests {
     fn remove() {
         unsafe {
             let mut storage = DenseStorage::<u32>::default();
-            storage.insert(4.into(), 4);
-            storage.insert(3.into(), 3);
-            storage.insert(2.into(), 2);
-            storage.insert(8.into(), 8);
-            storage.insert(6.into(), 6);
+            storage.insert(4u32.into(), 4);
+            storage.insert(3u32.into(), 3);
+            storage.insert(2u32.into(), 2);
+            storage.insert(8u32.into(), 8);
+            storage.insert(6u32.into(), 6);
             assert_eq!(storage.items.data, vec![4, 3, 2, 8, 6]);
             assert_eq!(
                 storage.items.data_id,
-                vec![4.into(), 3.into(), 2.into(), 8.into(), 6.into()]
+                vec![
+                    4u32.into(),
+                    3u32.into(),
+                    2u32.into(),
+                    8u32.into(),
+                    6u32.into()
+                ]
             );
-            assert_eq!(storage.items.base_id, Some(2.into()));
+            assert_eq!(storage.items.base_id, Some(2u32.into()));
             assert_eq!(storage.items.indices[0].assume_init(), 2);
             assert_eq!(storage.items.indices[1].assume_init(), 1);
             assert_eq!(storage.items.indices[2].assume_init(), 0);
             assert_eq!(storage.items.indices[4].assume_init(), 4);
             assert_eq!(storage.items.indices[6].assume_init(), 3);
-            assert!(storage.contains(3.into()));
+            assert!(storage.contains(3u32.into()));
 
-            storage.remove(3.into());
-            assert!(!storage.contains(3.into()));
+            storage.remove(3u32.into());
+            assert!(!storage.contains(3u32.into()));
             assert_eq!(storage.items.data, vec![4, 6, 2, 8]);
             assert_eq!(
                 storage.items.data_id,
-                vec![4.into(), 6.into(), 2.into(), 8.into()]
+                vec![4u32.into(), 6u32.into(), 2u32.into(), 8u32.into()]
             );
-            assert_eq!(storage.items.base_id, Some(2.into()));
+            assert_eq!(storage.items.base_id, Some(2u32.into()));
             assert_eq!(storage.items.indices[0].assume_init(), 2);
             assert_eq!(storage.items.indices[2].assume_init(), 0);
             assert_eq!(storage.items.indices[4].assume_init(), 1);
             assert_eq!(storage.items.indices[6].assume_init(), 3);
 
-            storage.remove(8.into());
+            storage.remove(8u32.into());
             assert_eq!(storage.items.data, vec![4, 6, 2]);
-            assert_eq!(storage.items.data_id, vec![4.into(), 6.into(), 2.into()]);
-            assert_eq!(storage.items.base_id, Some(2.into()));
+            assert_eq!(
+                storage.items.data_id,
+                vec![4u32.into(), 6u32.into(), 2u32.into()]
+            );
+            assert_eq!(storage.items.base_id, Some(2u32.into()));
             assert_eq!(storage.items.indices[0].assume_init(), 2);
             assert_eq!(storage.items.indices[2].assume_init(), 0);
             assert_eq!(storage.items.indices[4].assume_init(), 1);

@@ -49,21 +49,21 @@ mod tests {
     #[test]
     fn it_works() {
         let mut storage = TagStorage::default();
-        storage.insert(2.into(), Tag);
-        assert!(storage.contains(2.into()));
-        assert!(!storage.contains(3.into()));
-        storage.insert(3.into(), Tag);
-        assert!(storage.contains(3.into()));
-        storage.remove(2.into());
-        assert!(!storage.contains(2.into()));
+        storage.insert(2u32.into(), Tag);
+        assert!(storage.contains(2u32.into()));
+        assert!(!storage.contains(3u32.into()));
+        storage.insert(3u32.into(), Tag);
+        assert!(storage.contains(3u32.into()));
+        storage.remove(2u32.into());
+        assert!(!storage.contains(2u32.into()));
     }
 
     #[test]
     #[should_panic(expected = "assertion failed: !self.mask.add(*id)")]
     fn duplicate_insert() {
         let mut storage = TagStorage::default();
-        storage.insert(2.into(), Tag);
-        storage.insert(2.into(), Tag);
+        storage.insert(2u32.into(), Tag);
+        storage.insert(2u32.into(), Tag);
     }
 
     #[derive(Default)]

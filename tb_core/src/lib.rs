@@ -1,6 +1,7 @@
 #![feature(backtrace)]
 
 use std::backtrace::Backtrace;
+use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::ops::{Deref, DerefMut};
 
@@ -14,6 +15,12 @@ pub struct AnyError {
 }
 
 pub type AnyErrorResult<T> = Result<T, AnyError>;
+
+impl Id {
+    pub fn as_usize(&self) -> usize {
+        self.0 as usize
+    }
+}
 
 impl Deref for Id {
     type Target = u32;
@@ -32,6 +39,12 @@ impl DerefMut for Id {
 impl From<u32> for Id {
     fn from(id: u32) -> Self {
         Self(id)
+    }
+}
+
+impl From<usize> for Id {
+    fn from(id: usize) -> Self {
+        Self(u32::try_from(id).unwrap())
     }
 }
 

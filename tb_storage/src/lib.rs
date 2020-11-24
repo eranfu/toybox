@@ -1,17 +1,19 @@
 use hibitset::BitSet;
 
 pub use dense_storage::DenseStorage;
+pub use dense_storage::DenseStorageItems;
 pub use tag_storage::TagStorage;
+pub use tag_storage::TagStorageItems;
 use tb_core::Id;
 pub use vec_storage::VecStorage;
+pub use vec_storage::VecStorageItems;
 
-#[derive(Default)]
 pub struct Storage<I: StorageItems> {
     mask: BitSet,
     items: I,
 }
 
-pub trait StorageItems {
+pub trait StorageItems: Default {
     type Data;
     /// # Safety
     ///
@@ -73,6 +75,15 @@ impl<I: StorageItems> Storage<I> {
 impl<I: StorageItems> Drop for Storage<I> {
     fn drop(&mut self) {
         self.clear();
+    }
+}
+
+impl<I: StorageItems> Default for Storage<I> {
+    fn default() -> Self {
+        Self {
+            mask: Default::default(),
+            items: Default::default(),
+        }
     }
 }
 

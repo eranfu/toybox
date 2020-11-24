@@ -1,5 +1,7 @@
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
+pub(crate) use crate::system::access_order::AccessOrder;
 use crate::world::{Resource, ResourceId};
 use crate::World;
 
@@ -21,36 +23,40 @@ pub trait SystemData<'r> {
     }
 }
 
-/// Read before write
-pub struct RBW<'r, R: Resource> {
-    resource: &'r R,
+pub struct ResourceAccessor<R, A: AccessOrder> {
+    resource: R,
+    _phantom: PhantomData<A>,
 }
 
-/// Write
-pub struct Write<'r, R: Resource> {
-    resource: &'r mut R,
+pub(crate) mod access_order {
+    pub struct ReadBeforeWrite;
+
+    pub struct Write;
+
+    pub struct ReadAfterWrite;
+
+    pub trait AccessOrder {}
+
+    impl AccessOrder for ReadBeforeWrite {}
+
+    impl AccessOrder for Write {}
+
+    impl AccessOrder for ReadAfterWrite {}
 }
 
-/// Read after write
-pub struct RAW<'r, R: Resource> {
-    resource: &'r R,
-}
+#[allow(type_alias_bounds)]
+pub type Read<'r, R: Resource, A> = ResourceAccessor<&'r R, A>;
+pub type RBW<'r, R> = Read<'r, R, access_order::ReadBeforeWrite>;
+pub type RAW<'r, R> = Read<'r, R, access_order::ReadAfterWrite>;
 
-pub trait ReadOrder {}
-
-pub struct ReadBeforeWrite;
-
-pub struct ReadAfterWrite;
-
-impl ReadOrder for ReadBeforeWrite {}
-
-impl ReadOrder for ReadAfterWrite {}
+#[allow(type_alias_bounds)]
+pub type Write<'r, R: Resource> = ResourceAccessor<&'r mut R, access_order::Write>;
 
 impl<'r> SystemData<'r> for () {
     fn fetch(_world: &'r World) -> Self {}
 }
 
-impl<'r, R: Resource> Deref for RBW<'r, R> {
+impl<'r, R, A: AccessOrder> Deref for Read<'r, R, A> {
     type Target = R;
 
     fn deref(&self) -> &Self::Target {
@@ -58,7 +64,7 @@ impl<'r, R: Resource> Deref for RBW<'r, R> {
     }
 }
 
-impl<'r, R: Resource> Deref for Write<'r, R> {
+impl<'r, R> Deref for Write<'r, R> {
     type Target = R;
 
     fn deref(&self) -> &Self::Target {
@@ -66,16 +72,8 @@ impl<'r, R: Resource> Deref for Write<'r, R> {
     }
 }
 
-impl<'r, R: Resource> DerefMut for Write<'r, R> {
+impl<'r, R> DerefMut for Write<'r, R> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        self.resource
-    }
-}
-
-impl<'r, R: Resource> Deref for RAW<'r, R> {
-    type Target = R;
-
-    fn deref(&self) -> &Self::Target {
         self.resource
     }
 }
@@ -84,6 +82,7 @@ impl<'r, R: Resource> SystemData<'r> for RBW<'r, R> {
     fn fetch(world: &'r World) -> Self {
         RBW {
             resource: world.fetch(),
+            _phantom: Default::default(),
         }
     }
 
@@ -96,6 +95,7 @@ impl<'r, R: Resource> SystemData<'r> for Write<'r, R> {
     fn fetch(world: &'r World) -> Self {
         Write {
             resource: world.fetch_mut(),
+            _phantom: Default::default(),
         }
     }
 
@@ -108,6 +108,7 @@ impl<'r, R: Resource> SystemData<'r> for RAW<'r, R> {
     fn fetch(world: &'r World) -> Self {
         RAW {
             resource: world.fetch(),
+            _phantom: Default::default(),
         }
     }
 

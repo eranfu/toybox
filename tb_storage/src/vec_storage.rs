@@ -75,9 +75,9 @@ mod tests {
     }
 
     impl<'a> DropItemData<'a> {
-        fn new(id: Id, td: &'a TestDrop) -> Self {
+        fn new(id: impl Into<Id>, td: &'a TestDrop) -> Self {
             Self {
-                id,
+                id: id.into(),
                 td,
                 drop_item: td.new_item().1,
             }
@@ -112,34 +112,34 @@ mod tests {
         unsafe {
             let td = TestDrop::new();
             let mut storage = VecStorage::<DropItemData>::default();
-            let data_4 = DropItemData::new(4.into(), &td);
-            let data_3 = DropItemData::new(3.into(), &td);
-            let data_2 = DropItemData::new(2.into(), &td);
-            let data_8 = DropItemData::new(8.into(), &td);
-            let data_6 = DropItemData::new(6.into(), &td);
-            storage.insert(4.into(), data_4.clone());
-            storage.insert(3.into(), data_3.clone());
-            storage.insert(2.into(), data_2.clone());
-            storage.insert(8.into(), data_8.clone());
-            storage.insert(6.into(), data_6.clone());
-            assert!(storage.contains(3.into()));
-            assert_eq!(storage.items.base_id, Some(2.into()));
+            let data_4 = DropItemData::new(4u32, &td);
+            let data_3 = DropItemData::new(3u32, &td);
+            let data_2 = DropItemData::new(2u32, &td);
+            let data_8 = DropItemData::new(8u32, &td);
+            let data_6 = DropItemData::new(6u32, &td);
+            storage.insert(4u32.into(), data_4.clone());
+            storage.insert(3u32.into(), data_3.clone());
+            storage.insert(2u32.into(), data_2.clone());
+            storage.insert(8u32.into(), data_8.clone());
+            storage.insert(6u32.into(), data_6.clone());
+            assert!(storage.contains(3u32.into()));
+            assert_eq!(storage.items.base_id, Some(2u32.into()));
             assert_eq!(&*storage.items.data[0].as_ptr(), &data_2);
             assert_eq!(&*storage.items.data[1].as_ptr(), &data_3);
             assert_eq!(&*storage.items.data[2].as_ptr(), &data_4);
             assert_eq!(&*storage.items.data[4].as_ptr(), &data_6);
             assert_eq!(&*storage.items.data[6].as_ptr(), &data_8);
 
-            storage.remove(3.into());
-            assert!(!storage.contains(3.into()));
-            assert_eq!(storage.items.base_id, Some(2.into()));
+            storage.remove(3u32.into());
+            assert!(!storage.contains(3u32.into()));
+            assert_eq!(storage.items.base_id, Some(2u32.into()));
             assert_eq!(&*storage.items.data[0].as_ptr(), &data_2);
             assert_eq!(&*storage.items.data[2].as_ptr(), &data_4);
             assert_eq!(&*storage.items.data[4].as_ptr(), &data_6);
             assert_eq!(&*storage.items.data[6].as_ptr(), &data_8);
 
-            storage.remove(8.into());
-            assert_eq!(storage.items.base_id, Some(2.into()));
+            storage.remove(8u32.into());
+            assert_eq!(storage.items.base_id, Some(2u32.into()));
             assert_eq!(&*storage.items.data[0].as_ptr(), &data_2);
             assert_eq!(&*storage.items.data[2].as_ptr(), &data_4);
             assert_eq!(&*storage.items.data[4].as_ptr(), &data_6);
@@ -154,7 +154,7 @@ mod tests {
     #[should_panic(expected = "assertion failed: !self.mask.add(*id)")]
     fn duplicate_insert() {
         let mut storage = VecStorage::default();
-        storage.insert(3.into(), 3);
-        storage.insert(3.into(), 5);
+        storage.insert(3u32.into(), 3);
+        storage.insert(3u32.into(), 5);
     }
 }

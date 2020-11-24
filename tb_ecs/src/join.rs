@@ -1,13 +1,8 @@
-use hibitset::{BitIter, BitSet, BitSetAnd, BitSetLike};
+use hibitset::{BitIter, BitSetAnd, BitSetLike};
 
 use tb_core::Id;
-use tb_storage::StorageItems;
 
-use crate::component::{ReadComponents, WriteComponents};
-use crate::system::ReadOrder;
-use crate::Component;
-
-trait Join: Sized {
+pub trait Join: Sized {
     type BitSet: BitSetLike;
     type Component;
     type Components;
@@ -22,7 +17,7 @@ trait Join: Sized {
     unsafe fn get(components: &mut Self::Components, id: Id) -> Self::Component;
 }
 
-struct JoinIterator<J: Join> {
+pub struct JoinIterator<J: Join> {
     mask_iter: BitIter<J::BitSet>,
     components: J::Components,
 }
@@ -34,35 +29,6 @@ impl<J: Join> Iterator for JoinIterator<J> {
         self.mask_iter
             .next()
             .map(|id| unsafe { J::get(&mut self.components, id.into()) })
-    }
-}
-
-impl<'r, C: Component, R: ReadOrder> Join for &'r ReadComponents<'r, C, R> {
-    type BitSet = &'r BitSet;
-    type Component = &'r C;
-    type Components = &'r C::Storage;
-
-    fn open(self) -> (Self::BitSet, Self::Components) {
-        self.components.storage.open()
-    }
-
-    unsafe fn get(components: &mut Self::Components, id: Id) -> Self::Component {
-        components.get(id)
-    }
-}
-
-impl<'r, C: Component> Join for &'r mut WriteComponents<'r, C> {
-    type BitSet = &'r BitSet;
-    type Component = &'r mut C;
-    type Components = &'r mut C::Storage;
-
-    fn open(self) -> (Self::BitSet, Self::Components) {
-        self.components.storage.open_mut()
-    }
-
-    unsafe fn get(components: &mut Self::Components, id: Id) -> Self::Component {
-        let components: *mut Self::Components = components as *mut Self::Components;
-        (*components).get_mut(id)
     }
 }
 
