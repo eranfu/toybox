@@ -206,7 +206,7 @@ impl World {
 mod tests {
     use tb_storage::{DenseStorageItems, Storage, VecStorageItems};
 
-    use crate::component::{RAWComponents, WriteComponents};
+    use crate::component::{RAWComponents, RBWComponents, WriteComponents};
     use crate::entity::Entities;
     use crate::join::Join;
     use crate::{Component, SystemData, World};
@@ -246,8 +246,44 @@ mod tests {
             .create();
         let components1 = RAWComponents::<Component1>::fetch(&world);
         let mut components2 = WriteComponents::<Component2>::fetch(&world);
-        let (v1, v2) = (&components1, &mut components2).join().next().unwrap();
+        let (v1, v2): (&Component1, &mut Component2) =
+            (&components1, &mut components2).join().next().unwrap();
         assert_eq!(v1.value1, 1);
         assert_eq!(v2.value2, 2);
+    }
+
+    #[test]
+    fn anti_components() {
+        let mut world = World::default();
+        world
+            .create_entity()
+            .with(Component1 { value1: 1 })
+            .with(Component2 { value2: 2 })
+            .create();
+        world
+            .create_entity()
+            .with(Component1 { value1: 11 })
+            .create();
+
+        let (components1, components2) =
+            <(RBWComponents<Component1>, RBWComponents<Component2>)>::fetch(&world);
+        let mut has = false;
+        for (component1, component2) in (&components1, &components2).join() {
+            has = true;
+            assert_eq!(component1.value1, 1);
+            assert_eq!(component2.value2, 2);
+        }
+        assert!(has);
+
+        let mut has = false;
+        for (component1, _) in (&components1, !&components2).join() {
+            has = true;
+            assert_eq!(component1.value1, 11);
+        }
+        assert!(has);
+
+        for (_, _) in (!&components1, &components2).join() {
+            unreachable!()
+        }
     }
 }
