@@ -1,0 +1,33 @@
+use crate::system::data::SystemData;
+
+pub(crate) mod data;
+mod registry;
+
+pub trait System<'r> {
+    type SystemData: SystemData<'r>;
+    fn run(&mut self, system_data: &mut Self::SystemData);
+}
+
+#[cfg(test)]
+mod tests {
+    use rayon::ThreadPoolBuilder;
+
+    use crate::{Scheduler, System, World};
+
+    struct TestSystem {}
+
+    impl System<'_> for TestSystem {
+        type SystemData = ();
+
+        fn run(&mut self, _system_data: &mut Self::SystemData) {}
+    }
+
+    #[test]
+    fn empty_system_data() {
+        let mut thread_pool = ThreadPoolBuilder::new().build().unwrap();
+        let mut scheduler = Scheduler::new(&mut thread_pool);
+        scheduler.insert(TestSystem {});
+        let world = World::default();
+        scheduler.schedule(&world);
+    }
+}

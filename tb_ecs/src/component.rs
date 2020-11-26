@@ -8,7 +8,7 @@ use tb_storage::{Storage, StorageItems};
 
 use crate::entity::Entities;
 use crate::join::Join;
-use crate::system::{access_order, AccessOrder};
+use crate::system::data::{access_order, AccessOrder};
 use crate::world::ResourceId;
 use crate::{SystemData, World};
 

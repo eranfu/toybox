@@ -1,14 +1,9 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
-pub(crate) use crate::system::access_order::AccessOrder;
+pub(crate) use crate::system::data::access_order::AccessOrder;
 use crate::world::{Resource, ResourceId};
 use crate::World;
-
-pub trait System<'r> {
-    type SystemData: SystemData<'r>;
-    fn run(&mut self, system_data: &mut Self::SystemData);
-}
 
 pub trait SystemData<'r> {
     fn fetch(world: &'r World) -> Self;
@@ -158,27 +153,3 @@ macro_rules! impl_system_data_tuple {
 }
 
 impl_system_data_tuple!(S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15);
-
-#[cfg(test)]
-mod tests {
-    use rayon::ThreadPoolBuilder;
-
-    use crate::{Scheduler, System, World};
-
-    struct TestSystem {}
-
-    impl<'r> System<'r> for TestSystem {
-        type SystemData = ();
-
-        fn run(&mut self, _system_data: &mut Self::SystemData) {}
-    }
-
-    #[test]
-    fn empty_system_data() {
-        let mut thread_pool = ThreadPoolBuilder::new().build().unwrap();
-        let mut scheduler = Scheduler::new(&mut thread_pool);
-        scheduler.insert(TestSystem {});
-        let world = World::default();
-        scheduler.schedule(&world);
-    }
-}

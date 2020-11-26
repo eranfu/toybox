@@ -3,8 +3,7 @@ use std::cell::RefCell;
 
 use rayon::ThreadPool;
 
-use crate::system::SystemData;
-use crate::{System, World};
+use crate::{System, SystemData, World};
 
 pub struct Scheduler<'t> {
     thread_pool: &'t mut ThreadPool,
@@ -90,7 +89,7 @@ where
 mod tests {
     use rayon::ThreadPoolBuilder;
 
-    use crate::system::{Write, RAW};
+    use crate::system::data::{Write, RAW};
     use crate::{Scheduler, System, World};
 
     struct TestSystem {}
