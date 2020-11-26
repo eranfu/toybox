@@ -204,27 +204,16 @@ impl World {
 
 #[cfg(test)]
 mod tests {
-    use tb_storage::{DenseStorageItems, Storage, VecStorageItems};
+    use crate::*;
 
-    use crate::component::{RAWComponents, RBWComponents, WriteComponents};
-    use crate::entity::Entities;
-    use crate::join::Join;
-    use crate::{Component, SystemData, World};
-
+    #[component(VecStorageItems)]
     struct Component1 {
         value1: i32,
     }
 
+    #[component]
     struct Component2 {
         value2: i32,
-    }
-
-    impl Component for Component1 {
-        type StorageItems = DenseStorageItems<Self>;
-    }
-
-    impl Component for Component2 {
-        type StorageItems = VecStorageItems<Self>;
     }
 
     #[test]

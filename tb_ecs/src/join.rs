@@ -14,6 +14,10 @@ pub trait Join: Sized {
         }
     }
     fn open(self) -> (Self::BitSet, Self::Components);
+
+    /// # Safety
+    ///
+    /// There must be component associated with given `Id`.
     unsafe fn get(components: &mut Self::Components, id: Id) -> Self::Component;
 }
 
