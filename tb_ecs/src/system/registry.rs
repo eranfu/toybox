@@ -2,7 +2,7 @@ use inventory::iter;
 
 use crate::scheduler::Runnable;
 use crate::world::ResourceId;
-use crate::{System, SystemData};
+use crate::*;
 
 pub struct SystemRegistry;
 
@@ -39,20 +39,17 @@ inventory::collect!(SystemInfo);
 
 #[cfg(test)]
 mod tests {
-    use crate::system::registry::SystemRegistry;
-    use crate::System;
+    use crate::*;
 
-    #[derive(Default)]
-    struct TestSystem;
+    #[system]
+    struct TestSystem {
+        value: i32,
+    }
 
     impl System<'_> for TestSystem {
         type SystemData = ();
 
-        fn run(&mut self, system_data: &mut Self::SystemData) {}
-    }
-
-    inventory::submit! {
-        crate::system::registry::SystemInfo::new::<TestSystem>()
+        fn run(&mut self, _system_data: Self::SystemData) {}
     }
 
     #[test]

@@ -80,8 +80,7 @@ where
     for<'r> T: 'static + System<'r>,
 {
     fn run(&mut self, world: &World) {
-        let mut system_data = T::SystemData::fetch(world);
-        self.run(&mut system_data);
+        self.run(T::SystemData::fetch(world));
     }
 }
 
@@ -107,7 +106,7 @@ mod tests {
     impl<'r> System<'r> for TestSystem {
         type SystemData = Write<'r, TestResource>;
 
-        fn run(&mut self, system_data: &mut Self::SystemData) {
+        fn run(&mut self, mut system_data: Self::SystemData) {
             system_data.value = 20;
         }
     }
@@ -115,9 +114,9 @@ mod tests {
     impl<'r> System<'r> for OtherSystem {
         type SystemData = (Write<'r, TestResource>, RAW<'r, OtherResource>);
 
-        fn run(&mut self, system_data: &mut Self::SystemData) {
-            system_data.0.value = 30;
-            assert_eq!(system_data.1.value, 100);
+        fn run(&mut self, (mut test, other): Self::SystemData) {
+            test.value = 30;
+            assert_eq!(other.value, 100);
         }
     }
 

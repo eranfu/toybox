@@ -1,11 +1,11 @@
 use crate::system::data::SystemData;
 
 pub(crate) mod data;
-mod registry;
+pub(crate) mod registry;
 
 pub trait System<'r> {
     type SystemData: SystemData<'r>;
-    fn run(&mut self, system_data: &mut Self::SystemData);
+    fn run(&mut self, system_data: Self::SystemData);
 }
 
 #[cfg(test)]
@@ -19,7 +19,7 @@ mod tests {
     impl System<'_> for TestSystem {
         type SystemData = ();
 
-        fn run(&mut self, _system_data: &mut Self::SystemData) {}
+        fn run(&mut self, _system_data: Self::SystemData) {}
     }
 
     #[test]
