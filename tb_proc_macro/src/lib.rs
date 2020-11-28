@@ -1,8 +1,3 @@
-#[macro_use]
-extern crate quote;
-#[macro_use]
-extern crate syn;
-
 use proc_macro::TokenStream;
 
 use quote::*;

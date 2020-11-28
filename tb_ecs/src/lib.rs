@@ -1,5 +1,3 @@
-#![feature(type_name_of_val)]
-
 #[macro_use]
 extern crate tb_proc_macro;
 

@@ -57,7 +57,7 @@ impl<R: Resource> Error for FetchError<R> {}
 impl World {
     pub fn insert<R: Resource>(&mut self, resource: R) {
         let resource_id = ResourceId::new::<R>();
-        debug_assert!(!self.resources.contains_key(&resource_id));
+        assert!(!self.resources.contains_key(&resource_id));
         self.resources
             .insert(resource_id, RefCell::new(Box::new(resource)));
     }
