@@ -127,7 +127,7 @@ impl<'r, C: Component, A: AccessOrder> ReadComponents<'r, C, A> {
     fn new(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
-            storage: world.fetch(),
+            storage: world.fetch_storage::<C>(),
             _phantom: Default::default(),
         }
     }
@@ -137,7 +137,7 @@ impl<'r, C: Component> WriteComponents<'r, C> {
     fn new(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
-            storage: world.fetch_mut(),
+            storage: world.fetch_storage_mut::<C>(),
             _phantom: Default::default(),
         }
     }

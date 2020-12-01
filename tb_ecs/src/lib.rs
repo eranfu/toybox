@@ -17,6 +17,7 @@ pub use system::registry::SystemInfo;
 pub use system::registry::SystemRegistry;
 pub use system::System;
 pub use tb_storage::*;
+pub use world::Resource;
 pub use world::World;
 
 mod component;

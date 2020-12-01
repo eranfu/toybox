@@ -25,6 +25,12 @@ impl SystemInfo {
     where
         for<'r> S: 'static + std::default::Default + System<'r>,
     {
+        println!(
+            "new system info. system type id: {:?}, name: {}",
+            std::any::TypeId::of::<S>(),
+            std::any::type_name::<S>()
+        );
+
         Self {
             name: std::any::type_name::<S>().into(),
             reads_before_write: S::SystemData::reads_before_write(),
