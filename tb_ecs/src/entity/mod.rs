@@ -26,6 +26,12 @@ pub struct EntityCreator<'r> {
     world: &'r mut World,
 }
 
+impl Entity {
+    pub fn id(&self) -> Id {
+        self.id
+    }
+}
+
 impl EntityCreator<'_> {
     pub fn with<C: Component>(&mut self, c: C) -> &mut Self {
         let storage = self.world.fetch_or_insert_storage::<C>();

@@ -5,12 +5,13 @@ use syn::*;
 
 #[proc_macro_attribute]
 pub fn system(_attr: TokenStream, item: TokenStream) -> TokenStream {
-    let item = parse_macro_input!(item as ItemStruct);
+    let system_struct = parse_macro_input!(item as ItemStruct);
+    let system_name = &system_struct.ident;
     let output = quote! {
         #[derive(Default)]
-        #item
+        #system_struct
         inventory::submit! {
-            SystemInfo::new::<TestSystem>()
+            SystemInfo::new::<#system_name>()
         }
     };
     output.into()
