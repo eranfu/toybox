@@ -2,6 +2,7 @@
 extern crate tb_proc_macro;
 
 pub use component::Component;
+pub use component::ComponentStorage;
 pub use component::RAWComponents;
 pub use component::RBWComponents;
 pub use component::WriteComponents;

@@ -7,7 +7,7 @@ use crate::{Component, World};
 
 mod generation;
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq)]
 pub struct Entity {
     id: Id,
     gen: Generation,

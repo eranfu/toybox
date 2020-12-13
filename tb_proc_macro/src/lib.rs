@@ -27,6 +27,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
     let component_define = parse_macro_input!(item as ItemStruct);
     let component_name = &component_define.ident;
     let output = quote! {
+        #[derive(Clone)]
         #component_define
 
         impl Component for #component_name {

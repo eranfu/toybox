@@ -1,3 +1,5 @@
+#![feature(specialization)]
+
 #[macro_use]
 extern crate tb_proc_macro;
 

@@ -12,6 +12,7 @@ tb_ecs = { path = "../tb_ecs" }
 tb_storage = { path = "../tb_storage" }
 tb_proc_macro = { path = "../tb_proc_macro" }
 bimap = "0.5.3"
+hibitset = "0.6.3"
 
 [features]
 editor = []

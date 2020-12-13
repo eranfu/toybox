@@ -12,12 +12,14 @@ use crate::system::data::{access_order, AccessOrder};
 use crate::world::ResourceId;
 use crate::{SystemData, World};
 
-pub trait Component: 'static + Sized {
+pub trait Component: 'static + Sized + Clone {
     type StorageItems: StorageItems<Data = Self>;
 }
 
-#[allow(type_alias_bounds)]
-pub type ComponentStorage<C: Component> = Storage<C::StorageItems>;
+pub struct ComponentStorage<C: Component> {
+    storage: Storage<C::StorageItems>,
+    _phantom: PhantomData<C>,
+}
 
 pub struct Components<'r, S: 'r, C: Component, A: AccessOrder> {
     entities: &'r Entities,
@@ -34,6 +36,29 @@ pub type WriteComponents<'r, C> =
 
 pub struct AntiComponents<'r> {
     mask: BitSetNot<&'r BitSet>,
+}
+
+impl<C: Component> Default for ComponentStorage<C> {
+    fn default() -> Self {
+        Self {
+            storage: Default::default(),
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<C: Component> Deref for ComponentStorage<C> {
+    type Target = Storage<C::StorageItems>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.storage
+    }
+}
+
+impl<C: Component> DerefMut for ComponentStorage<C> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.storage
+    }
 }
 
 impl<'r, C: Component, A: AccessOrder> Not for &'r ReadComponents<'r, C, A> {
@@ -220,8 +245,8 @@ mod tests {
     fn it_works() {
         let mut world = World::default();
         world.insert(Entities::default());
-        world.insert(Storage::<<Component1 as Component>::StorageItems>::default());
-        world.insert(Storage::<<Component2 as Component>::StorageItems>::default());
+        world.insert(ComponentStorage::<Component1>::default());
+        world.insert(ComponentStorage::<Component2>::default());
         let components1 = RAWComponents::<Component1>::fetch(&world);
         let mut components2 = WriteComponents::<Component2>::fetch(&world);
         for _x in (&components1, &mut components2).join() {

@@ -1,4 +1,4 @@
-#[derive(Copy, Clone, Eq, PartialEq)]
+#[derive(Copy, Clone, Hash, Eq, PartialEq)]
 pub(crate) struct Generation {
     gen: i32,
 }
