@@ -16,6 +16,11 @@ pub trait Component: 'static + Sized + Clone {
     type StorageItems: StorageItems<Data = Self>;
 }
 
+pub trait ComponentWithEntityRef: Component {
+    type RefMut;
+    fn get_entity_ref(&mut self) -> Self::RefMut;
+}
+
 pub struct ComponentStorage<C: Component> {
     storage: Storage<C::StorageItems>,
     _phantom: PhantomData<C>,

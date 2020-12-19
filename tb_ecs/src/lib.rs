@@ -2,11 +2,7 @@
 #[macro_use]
 extern crate tb_proc_macro;
 
-pub use component::Component;
-pub use component::ComponentStorage;
-pub use component::RAWComponents;
-pub use component::RBWComponents;
-pub use component::WriteComponents;
+pub use component::*;
 pub use entity::Entities;
 pub use entity::Entity;
 pub use join::Join;
