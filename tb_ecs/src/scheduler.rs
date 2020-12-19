@@ -125,9 +125,8 @@ mod tests {
         let mut world = World::default();
         let mut thread_pool = ThreadPoolBuilder::new().build().unwrap();
         let mut scheduler = Scheduler::new(&mut thread_pool);
-        let resource = TestResource { value: 10 };
-        world.insert(resource);
-        world.insert(OtherResource { value: 100 });
+        world.insert(|| TestResource { value: 10 });
+        world.insert(|| OtherResource { value: 100 });
         assert_eq!(world.fetch::<TestResource>().value, 10);
 
         scheduler.insert(TestSystem {});

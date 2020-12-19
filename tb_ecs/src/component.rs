@@ -218,12 +218,8 @@ impl World {
         self.fetch_mut()
     }
 
-    pub fn insert_storage<C: Component>(&mut self) {
-        self.insert(Storage::<<C as Component>::StorageItems>::default())
-    }
-
-    pub fn fetch_or_insert_storage<C: Component>(&mut self) -> &mut ComponentStorage<C> {
-        self.fetch_or_insert_default::<ComponentStorage<C>>()
+    pub fn insert_storage<C: Component>(&mut self) -> &mut ComponentStorage<C> {
+        self.insert(ComponentStorage::<C>::default)
     }
 }
 
@@ -244,9 +240,9 @@ mod tests {
     #[test]
     fn it_works() {
         let mut world = World::default();
-        world.insert(Entities::default());
-        world.insert(ComponentStorage::<Component1>::default());
-        world.insert(ComponentStorage::<Component2>::default());
+        world.insert(Entities::default);
+        world.insert(ComponentStorage::<Component1>::default);
+        world.insert(ComponentStorage::<Component2>::default);
         let components1 = RAWComponents::<Component1>::fetch(&world);
         let mut components2 = WriteComponents::<Component2>::fetch(&world);
         for _x in (&components1, &mut components2).join() {

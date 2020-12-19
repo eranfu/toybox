@@ -34,7 +34,7 @@ impl Entity {
 
 impl EntityCreator<'_> {
     pub fn with<C: Component>(&mut self, c: C) -> &mut Self {
-        let storage = self.world.fetch_or_insert_storage::<C>();
+        let storage = self.world.insert_storage::<C>();
         storage.insert(self.entity.id, c);
         self
     }
@@ -54,7 +54,7 @@ impl Drop for EntityCreator<'_> {
 
 impl World {
     pub fn create_entity(&mut self) -> EntityCreator {
-        let entity = self.fetch_or_insert_default::<Entities>().new_entity();
+        let entity = self.insert(Entities::default).new_entity();
         EntityCreator {
             created: false,
             entity,

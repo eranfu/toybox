@@ -1,6 +1,5 @@
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::error::Error;
 use std::fmt::{Debug, Display, Formatter};
@@ -55,15 +54,12 @@ impl<R: Resource> Display for FetchError<R> {
 impl<R: Resource> Error for FetchError<R> {}
 
 impl World {
-    pub fn insert<R: Resource>(&mut self, resource: R) {
-        let resource_id = ResourceId::new::<R>();
-        assert!(!self.resources.contains_key(&resource_id));
-        self.resources
-            .insert(resource_id, RefCell::new(Box::new(resource)));
-    }
-
-    pub fn entry<R: Resource>(&mut self) -> Entry<ResourceId, RefCell<Box<dyn Resource>>> {
-        self.resources.entry(ResourceId::new::<R>())
+    pub fn insert<R: Resource>(&mut self, create: impl FnOnce() -> R) -> &mut R {
+        let r: &RefCell<_> = self
+            .resources
+            .entry(ResourceId::new::<R>())
+            .or_insert_with(|| RefCell::new(Box::new(create())));
+        unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) }
     }
 
     pub fn try_fetch<R: Resource>(&self) -> AnyErrorResult<&R> {
@@ -78,13 +74,6 @@ impl World {
             .get(&ResourceId::new::<R>())
             .map(|r| unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) })
             .ok_or_else(|| FetchError::<R>::default().into())
-    }
-
-    pub fn fetch_or_insert_default<R: Resource + Default>(&mut self) -> &mut R {
-        let r = self
-            .entry::<R>()
-            .or_insert_with(|| RefCell::new(Box::new(<R as Default>::default())));
-        unsafe { &mut *((*r).borrow_mut().as_mut() as *mut dyn Resource as *mut R) }
     }
 
     pub fn fetch<R: Resource>(&self) -> &R {
@@ -124,7 +113,7 @@ mod tests {
         let mut world = World::default();
         let test_resource = world.try_fetch::<TestResource>();
         assert!(test_resource.is_err());
-        world.insert(TestResource::new(10));
+        world.insert(|| TestResource::new(10));
         assert!(world.try_fetch::<TestResource>().is_ok());
         assert_eq!(world.fetch::<TestResource>().value, 10);
         let resource: &mut TestResource = world.fetch_mut();

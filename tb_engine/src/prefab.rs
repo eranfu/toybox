@@ -14,14 +14,12 @@ trait Components {
 }
 
 pub trait EntityRef {
-    fn build_link(&self, link: &mut PrefabLink, entities: &mut Entities);
-    fn convert_to_world(&mut self, link: &PrefabLink);
+    fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities);
 }
 
 pub trait ComponentWithEntityRef: Component {
     type Ref: EntityRef;
-    fn get_entity_ref(&self) -> Self::Ref;
-    fn get_entity_ref_mut(&mut self) -> Self::Ref;
+    fn get_entity_ref(&mut self) -> Self::Ref;
 }
 
 #[component]
@@ -36,11 +34,12 @@ where
 {
     default fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         let (mask, components) = self.open();
+        world.insert_storage::<C>();
+        let storage = world.fetch_storage_mut::<C>();
         let entities = world.fetch_mut::<Entities>();
         mask.iter().map(Id::from).for_each(|id| {
             link.insert(id, entities);
         });
-        let storage = world.fetch_or_insert_storage::<C>();
         mask.iter().map(Id::from).for_each(|id| {
             storage.insert(
                 link.get_entity_in_world(id).id(),
@@ -56,16 +55,14 @@ where
 {
     fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         let (mask, components) = self.open();
+        world.insert_storage::<C>();
+        let storage = world.fetch_storage_mut::<C>();
         let entities = world.fetch_mut::<Entities>();
         mask.iter().map(Id::from).for_each(|id| {
-            let component: &C = unsafe { components.get(id) };
-            component.get_entity_ref().build_link(link, entities);
+            let mut component = unsafe { components.get(id) }.clone();
+            let mut entity_ref = component.get_entity_ref();
             link.insert(id, entities);
-        });
-        let storage = world.fetch_or_insert_storage::<C>();
-        mask.iter().map(Id::from).for_each(|id| {
-            let mut component: C = unsafe { components.get(id) }.clone();
-            component.get_entity_ref_mut().convert_to_world(link);
+            entity_ref.convert_to_world(link, entities);
             storage.insert(link.get_entity_in_world(id).id(), component);
         });
     }
