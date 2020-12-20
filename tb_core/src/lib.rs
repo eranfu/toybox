@@ -42,6 +42,12 @@ impl From<u32> for Id {
     }
 }
 
+impl From<i32> for Id {
+    fn from(id: i32) -> Self {
+        Self(u32::try_from(id).unwrap())
+    }
+}
+
 impl From<usize> for Id {
     fn from(id: usize) -> Self {
         Self(u32::try_from(id).unwrap())

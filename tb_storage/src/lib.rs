@@ -1,12 +1,16 @@
 use hibitset::BitSet;
 
-pub use dense_storage::DenseStorage;
-pub use dense_storage::DenseStorageItems;
-pub use tag_storage::TagStorage;
-pub use tag_storage::TagStorageItems;
+pub use dense_storage::*;
+pub use hash_map_storage::*;
+pub use tag_storage::*;
 use tb_core::Id;
-pub use vec_storage::VecStorage;
-pub use vec_storage::VecStorageItems;
+pub use vec_storage::*;
+
+mod dense_storage;
+mod hash_map_storage;
+mod tag_storage;
+mod util;
+mod vec_storage;
 
 pub struct Storage<I: StorageItems> {
     mask: BitSet,
@@ -86,8 +90,3 @@ impl<I: StorageItems> Default for Storage<I> {
         }
     }
 }
-
-mod dense_storage;
-mod tag_storage;
-mod util;
-mod vec_storage;
