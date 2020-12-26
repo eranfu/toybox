@@ -17,6 +17,11 @@ pub trait ConvertToWorld {
     fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities);
 }
 
+pub trait ComponentWithEntityRef<'e>: Component {
+    type RefMut: 'e + ConvertToWorld;
+    fn get_entity_ref(&'e mut self) -> Self::RefMut;
+}
+
 #[component]
 #[derive(Default)]
 pub struct PrefabLink {
@@ -42,10 +47,9 @@ where
     }
 }
 
-impl<C, R> Components for ComponentStorage<C>
+impl<C> Components for ComponentStorage<C>
 where
-    C: ComponentWithEntityRef<RefMut = R>,
-    R: ConvertToWorld,
+    for<'e> C: ComponentWithEntityRef<'e>,
 {
     fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         let (mask, components) = self.open();
@@ -54,8 +58,10 @@ where
         let entities = world.fetch_mut::<Entities>();
         mask.iter().map(Id::from).for_each(|id| {
             let mut component: C = unsafe { components.get(id) }.clone();
-            let mut entity_ref = component.get_entity_ref();
-            entity_ref.convert_to_world(link, entities);
+            {
+                let mut entity_ref = component.get_entity_ref();
+                entity_ref.convert_to_world(link, entities);
+            }
             storage.insert(link.build_link(id, entities).id(), component);
         });
     }
@@ -118,7 +124,7 @@ macro_rules! convert_to_world_tuple {
 
 convert_to_world_tuple!(C0, C1, C2, C3, C4, C5, C6, C7);
 
-#[cfg(tests)]
+#[cfg(test)]
 mod tests {
     use tb_ecs::*;
 
@@ -140,17 +146,30 @@ mod tests {
         entity_b: Entity,
     }
 
-    impl<'r> ComponentWithEntityRef for &'r mut Component1 {
-        type RefMut = &'r mut Entity;
+    impl<'e> ComponentWithEntityRef<'e> for Component1 {
+        type RefMut = &'e mut Entity;
 
-        fn get_entity_ref(&mut self) -> Self::RefMut {
+        fn get_entity_ref(&'e mut self) -> Self::RefMut {
             &mut self.entity_a
+        }
+    }
+
+    impl<'e> ComponentWithEntityRef<'e> for Component2 {
+        type RefMut = (&'e mut Entity, &'e mut Entity);
+
+        fn get_entity_ref(&'e mut self) -> Self::RefMut {
+            (&mut self.entity_a, &mut self.entity_b)
         }
     }
 
     #[test]
     fn convert_to_world() {
-        let mut world = World::default();
+        let entities: Vec<Entity> = {
+            let mut world = World::default();
+            let entities = world.insert(Entities::default);
+            (0..16).map(|_i| entities.new_entity()).collect()
+        };
+
         let prefab = {
             let mut components0 = ComponentStorage::<Component0>::default();
             components0.insert(10.into(), Component0 { value: 10 });
@@ -158,18 +177,18 @@ mod tests {
             components1.insert(
                 7.into(),
                 Component1 {
-                    entity_a: 15.into(),
+                    entity_a: entities[15],
                 },
             );
             let mut components2 = ComponentStorage::<Component2>::default();
             components2.insert(
                 15.into(),
                 Component2 {
-                    entity_a: 7.into(),
-                    entity_b: 10.into(),
+                    entity_a: entities[7],
+                    entity_b: entities[10],
                 },
             );
-            let components = vec![
+            let components: Vec<Box<dyn crate::prefab::Components>> = vec![
                 Box::new(components0),
                 Box::new(components1),
                 Box::new(components2),
@@ -180,17 +199,17 @@ mod tests {
             }
         };
 
+        let mut world = World::default();
         prefab.attach(&mut world);
 
-        let entities = world.fetch::<Entities>();
-        let (components0, components1, components2) = SystemData::<(
+        let (components0, components1, components2) = <(
             RAWComponents<Component0>,
             RAWComponents<Component1>,
             RAWComponents<Component2>,
-        )>::fetch(&world);
+        ) as SystemData>::fetch(&world);
         for component0 in components0.join() {
             let component0: &Component0 = component0;
-            assert_eq!(component0.value, 15);
+            assert_eq!(component0.value, 10);
         }
         for component1 in components1.join() {
             let component1: &Component1 = component1;
@@ -198,8 +217,8 @@ mod tests {
         }
         for component2 in components2.join() {
             let component2: &Component2 = component2;
-            assert_eq!(component1.entity_a.id(), 2.into());
-            assert_eq!(component1.entity_a.id(), 0.into());
+            assert_eq!(component2.entity_a.id(), 2.into());
+            assert_eq!(component2.entity_b.id(), 0.into());
         }
     }
 }
