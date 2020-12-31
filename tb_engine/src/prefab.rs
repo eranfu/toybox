@@ -17,11 +17,6 @@ pub trait ConvertToWorld {
     fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities);
 }
 
-pub trait ComponentWithEntityRef<'e>: Component {
-    type RefMut: 'e + ConvertToWorld;
-    fn get_entity_ref(&'e mut self) -> Self::RefMut;
-}
-
 #[component]
 #[derive(Default)]
 pub struct PrefabLink {
@@ -58,10 +53,9 @@ where
         let entities = world.fetch_mut::<Entities>();
         mask.iter().map(Id::from).for_each(|id| {
             let mut component: C = unsafe { components.get(id) }.clone();
-            {
-                let mut entity_ref = component.get_entity_ref();
-                entity_ref.convert_to_world(link, entities);
-            }
+            let mut entity_ref = component.get_entity_ref();
+            ConvertToWorld::convert_to_world(&mut entity_ref, link, entities);
+            drop(entity_ref);
             storage.insert(link.build_link(id, entities).id(), component);
         });
     }
@@ -101,28 +95,37 @@ impl Prefab {
     }
 }
 
-impl<'e> ConvertToWorld for &'e mut Entity {
-    fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
-        **self = link.build_link(self.id(), entities);
+default impl<'e, E: EntityRef> ConvertToWorld for E {
+    default fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
+        unreachable!()
+    }
+}
+
+default impl<'e, E: EntityRef<Ref = &'e mut Entity>> ConvertToWorld for E {
+    default fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
+        let e = self.get();
+        *e = link.build_link(e.id(), entities);
     }
 }
 
 macro_rules! convert_to_world_tuple {
-    ($c:ident) => {};
-    ($c0:ident, $($c1:ident), +) => {
-        convert_to_world_tuple!($($c1), +);
-        impl<$c0: ConvertToWorld, $($c1: ConvertToWorld), +> ConvertToWorld for ($c0, $($c1), +) {
+    ($e:ident) => {};
+    ($e0:ident, $($e1:ident), +) => {
+        convert_to_world_tuple!($($e1), +);
+
+        impl<$e0: EntityRef, $($e1: EntityRef), +, E: EntityRef<Ref=($e0, $($e1), +)>> ConvertToWorld for E {
             #[allow(non_snake_case)]
             fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
-                let ($c0, $($c1), +) = self;
-                $c0.convert_to_world(link, entities);
-                $($c1.convert_to_world(link, entities)); +;
+                let ($e0, $($e1), +) = self.get();
+                $e0.convert_to_world(link, entities);
+                $($e1.convert_to_world(link, entities));
+                +;
             }
         }
     };
 }
 
-convert_to_world_tuple!(C0, C1, C2, C3, C4, C5, C6, C7);
+convert_to_world_tuple!(E0, E1, E2, E3, E4, E5, E6, E7);
 
 #[cfg(test)]
 mod tests {
@@ -147,17 +150,17 @@ mod tests {
     }
 
     impl<'e> ComponentWithEntityRef<'e> for Component1 {
-        type RefMut = &'e mut Entity;
+        type Ref = &'e mut Entity;
 
-        fn get_entity_ref(&'e mut self) -> Self::RefMut {
+        fn get_entity_ref(&'e mut self) -> Self::Ref {
             &mut self.entity_a
         }
     }
 
     impl<'e> ComponentWithEntityRef<'e> for Component2 {
-        type RefMut = (&'e mut Entity, &'e mut Entity);
+        type Ref = (&'e mut Entity, &'e mut Entity);
 
-        fn get_entity_ref(&'e mut self) -> Self::RefMut {
+        fn get_entity_ref(&'e mut self) -> Self::Ref {
             (&mut self.entity_a, &mut self.entity_b)
         }
     }

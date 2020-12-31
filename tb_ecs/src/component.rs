@@ -10,10 +10,20 @@ use crate::entity::Entities;
 use crate::join::Join;
 use crate::system::data::{access_order, AccessOrder};
 use crate::world::ResourceId;
-use crate::{SystemData, World};
+use crate::{Entity, SystemData, World};
 
 pub trait Component: 'static + Sized + Clone {
     type StorageItems: StorageItems<Data = Self>;
+}
+
+pub trait EntityRef {
+    type Ref;
+    fn get(self) -> Self::Ref;
+}
+
+pub trait ComponentWithEntityRef<'e>: Component {
+    type Ref: 'e + EntityRef;
+    fn get_entity_ref(&mut self) -> Self::Ref;
 }
 
 pub struct ComponentStorage<C: Component> {
@@ -30,13 +40,39 @@ pub struct Components<'r, S: 'r, C: Component, A: AccessOrder> {
 pub type ReadComponents<'r, C, A> = Components<'r, &'r ComponentStorage<C>, C, A>;
 pub type RBWComponents<'r, C> = ReadComponents<'r, C, access_order::ReadBeforeWrite>;
 pub type RAWComponents<'r, C> = ReadComponents<'r, C, access_order::ReadAfterWrite>;
-
 pub type WriteComponents<'r, C> =
     Components<'r, &'r mut ComponentStorage<C>, C, access_order::Write>;
 
 pub struct AntiComponents<'r> {
     mask: BitSetNot<&'r BitSet>,
 }
+
+impl<'e> EntityRef for &'e mut Entity {
+    type Ref = &'e mut Entity;
+
+    fn get(self) -> Self::Ref {
+        self
+    }
+}
+
+macro_rules! impl_entity_ref_tuple {
+    ($e:ident) => {};
+    ($e0:ident, $($e1:ident), +) => {
+        impl_entity_ref_tuple!($($e1), +);
+
+        impl<'e, $e0: EntityRef, $($e1: EntityRef), +> EntityRef for ($e0, $($e1), +) {
+            type Ref = ($e0::Ref, $($e1::Ref), +);
+
+            #[allow(non_snake_case)]
+            fn get(self) -> Self::Ref {
+                let ($e0, $($e1), +) = self;
+                ($e0.get(), $($e1.get()), +)
+            }
+        }
+    };
+}
+
+impl_entity_ref_tuple!(E0, E1, E2, E3, E4, E5, E6, E7);
 
 impl<C: Component> Default for ComponentStorage<C> {
     fn default() -> Self {
