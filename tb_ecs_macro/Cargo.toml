@@ -1,5 +1,5 @@
 [package]
-name = "tb_proc_macro"
+name = "tb_esc_macro"
 version = "0.1.0"
 authors = ["mingyuan-f <1119369173@qq.com>"]
 edition = "2018"
