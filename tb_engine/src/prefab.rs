@@ -95,37 +95,13 @@ impl Prefab {
     }
 }
 
-default impl<'e, E: EntityRef> ConvertToWorld for E {
+impl<E: EntityRef> ConvertToWorld for E {
     default fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
-        unreachable!()
+        self.for_each(&mut |e: &mut Entity| {
+            *e = link.build_link(e.id(), entities);
+        });
     }
 }
-
-default impl<'e, E: EntityRef<Ref = &'e mut Entity>> ConvertToWorld for E {
-    default fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
-        let e = self.get();
-        *e = link.build_link(e.id(), entities);
-    }
-}
-
-macro_rules! convert_to_world_tuple {
-    ($e:ident) => {};
-    ($e0:ident, $($e1:ident), +) => {
-        convert_to_world_tuple!($($e1), +);
-
-        impl<$e0: EntityRef, $($e1: EntityRef), +, E: EntityRef<Ref=($e0, $($e1), +)>> ConvertToWorld for E {
-            #[allow(non_snake_case)]
-            fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
-                let ($e0, $($e1), +) = self.get();
-                $e0.convert_to_world(link, entities);
-                $($e1.convert_to_world(link, entities));
-                +;
-            }
-        }
-    };
-}
-
-convert_to_world_tuple!(E0, E1, E2, E3, E4, E5, E6, E7);
 
 #[cfg(test)]
 mod tests {

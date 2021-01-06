@@ -17,13 +17,12 @@ pub trait Component: 'static + Sized + Clone {
 }
 
 pub trait EntityRef {
-    type Ref;
-    fn get(self) -> Self::Ref;
+    fn for_each(&mut self, action: &mut impl FnMut(&mut Entity));
 }
 
 pub trait ComponentWithEntityRef<'e>: Component {
     type Ref: 'e + EntityRef;
-    fn get_entity_ref(&mut self) -> Self::Ref;
+    fn get_entity_ref(&'e mut self) -> Self::Ref;
 }
 
 pub struct ComponentStorage<C: Component> {
@@ -48,10 +47,8 @@ pub struct AntiComponents<'r> {
 }
 
 impl<'e> EntityRef for &'e mut Entity {
-    type Ref = &'e mut Entity;
-
-    fn get(self) -> Self::Ref {
-        self
+    fn for_each(&mut self, action: &mut impl FnMut(&mut Entity)) {
+        action(self)
     }
 }
 
@@ -61,12 +58,13 @@ macro_rules! impl_entity_ref_tuple {
         impl_entity_ref_tuple!($($e1), +);
 
         impl<'e, $e0: EntityRef, $($e1: EntityRef), +> EntityRef for ($e0, $($e1), +) {
-            type Ref = ($e0::Ref, $($e1::Ref), +);
 
             #[allow(non_snake_case)]
-            fn get(self) -> Self::Ref {
+            fn for_each(&mut self, action: &mut impl FnMut(&mut Entity)) {
                 let ($e0, $($e1), +) = self;
-                ($e0.get(), $($e1.get()), +)
+                $e0.for_each(action);
+                $($e1.for_each(action));
+                +;
             }
         }
     };
