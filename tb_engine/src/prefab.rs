@@ -125,22 +125,6 @@ mod tests {
         entity_b: Entity,
     }
 
-    impl<'e> ComponentWithEntityRef<'e> for Component1 {
-        type Ref = &'e mut Entity;
-
-        fn get_entity_ref(&'e mut self) -> Self::Ref {
-            &mut self.entity_a
-        }
-    }
-
-    impl<'e> ComponentWithEntityRef<'e> for Component2 {
-        type Ref = (&'e mut Entity, &'e mut Entity);
-
-        fn get_entity_ref(&'e mut self) -> Self::Ref {
-            (&mut self.entity_a, &mut self.entity_b)
-        }
-    }
-
     #[test]
     fn convert_to_world() {
         let entities: Vec<Entity> = {
