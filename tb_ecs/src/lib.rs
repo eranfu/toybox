@@ -1,6 +1,6 @@
 #[cfg(test)]
 #[macro_use]
-extern crate tb_esc_macro;
+extern crate tb_ecs_macro;
 
 pub use component::*;
 pub use entity::Entities;

@@ -1,7 +1,7 @@
 #![feature(specialization)]
 
 #[macro_use]
-extern crate tb_esc_macro;
+extern crate tb_ecs_macro;
 
 mod asset;
 mod level;

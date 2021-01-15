@@ -9,7 +9,7 @@ edition = "2018"
 [dependencies]
 tb_core = { path = "../tb_core" }
 tb_storage = { path = "../tb_storage" }
-tb_esc_macro = { path = "../tb_ecs_macro" }
+tb_ecs_macro = { path = "../tb_ecs_macro" }
 rayon = "1.5.0"
 hibitset = "0.6.3"
 inventory = "0.1.9"

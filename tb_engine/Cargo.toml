@@ -10,7 +10,7 @@ edition = "2018"
 tb_core = { path = "../tb_core" }
 tb_ecs = { path = "../tb_ecs" }
 tb_storage = { path = "../tb_storage" }
-tb_esc_macro = { path = "../tb_ecs_macro" }
+tb_ecs_macro = { path = "../tb_ecs_macro" }
 bimap = "0.5.3"
 hibitset = "0.6.3"
 
