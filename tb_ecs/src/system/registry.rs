@@ -21,7 +21,7 @@ pub struct SystemInfo {
 }
 
 impl SystemInfo {
-    fn new<S>() -> Self
+    pub fn new<S>() -> Self
     where
         for<'r> S: 'static + std::default::Default + System<'r>,
     {
@@ -34,7 +34,7 @@ impl SystemInfo {
         Self {
             name: std::any::type_name::<S>().into(),
             reads_before_write: S::SystemData::reads_before_write(),
-            reads_after_write: S::SystemData::reads_before_write(),
+            reads_after_write: S::SystemData::reads_after_write(),
             writes: S::SystemData::writes(),
             create: || Box::new(S::default()),
         }

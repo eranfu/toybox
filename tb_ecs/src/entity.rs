@@ -1,23 +1,24 @@
-use hibitset::{BitSet, BitSetLike};
+use std::ops::Deref;
+use std::sync::atomic::{AtomicU64, Ordering};
 
-use generation::Generation;
-use tb_core::Id;
-
+use crate::sparse_set::{SparseSet, SparseSetEntityIter};
 use crate::{Component, World};
 
-mod generation;
-
-#[derive(Copy, Clone, Hash, PartialEq, Eq)]
+#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Entity {
-    id: Id,
-    gen: Generation,
+    id: u64,
+}
+
+impl Entity {
+    pub fn new(id: u64) -> Self {
+        Self { id }
+    }
 }
 
 #[derive(Default)]
 pub struct Entities {
-    alive: BitSet,
-    killed: BitSet,
-    generations: Vec<Generation>,
+    entities: SparseSet<()>,
+    next_id: AtomicU64,
 }
 
 pub struct EntityCreator<'r> {
@@ -26,16 +27,18 @@ pub struct EntityCreator<'r> {
     world: &'r mut World,
 }
 
-impl Entity {
-    pub fn id(&self) -> Id {
-        self.id
+impl Deref for Entities {
+    type Target = SparseSet<()>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.entities
     }
 }
 
 impl EntityCreator<'_> {
     pub fn with<C: Component>(&mut self, c: C) -> &mut Self {
         let storage = self.world.insert_storage::<C>();
-        storage.insert(self.entity.id, c);
+        storage.insert(self.entity, c);
         self
     }
     pub fn create(&mut self) -> Entity {
@@ -65,67 +68,61 @@ impl World {
 
 impl Entities {
     pub fn new_entity(&mut self) -> Entity {
-        match (&self.killed).iter().next() {
-            None => {
-                let id: Id = self.generations.len().into();
-                self.generations.push(Generation::new_alive());
-                self.alive.add(*id);
-                Entity {
-                    id,
-                    gen: unsafe { *self.generations.get_unchecked(id.as_usize()) },
-                }
-            }
-            Some(id) => {
-                let gen = unsafe { self.generations.get_unchecked_mut(id as usize) };
-                gen.relive();
-                self.killed.remove(id);
-                self.alive.add(id);
-                Entity {
-                    id: id.into(),
-                    gen: *gen,
-                }
-            }
-        }
+        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
+        let entity = Entity { id };
+        self.entities.insert(entity, ());
+        entity
     }
 
     pub fn kill(&mut self, entity: Entity) {
         if !self.is_alive(entity) {
             return;
         }
-        unsafe {
-            self.generations
-                .get_unchecked_mut(*entity.id as usize)
-                .die();
-        }
-        self.killed.add(*entity.id);
-        self.alive.remove(*entity.id);
+
+        self.entities.remove(entity);
     }
 
     pub fn is_alive(&self, entity: Entity) -> bool {
-        entity.gen.is_alive()
-            && self.alive.contains(*entity.id)
-            && unsafe { *self.generations.get_unchecked(*entity.id as usize) == entity.gen }
+        self.entities.contains(entity)
+    }
+
+    pub fn iter(&self) -> EntitiesIter {
+        EntitiesIter {
+            inner: self.entities.iter(),
+        }
+    }
+}
+
+pub struct EntitiesIter<'e> {
+    inner: SparseSetEntityIter<'e>,
+}
+
+impl<'e> Iterator for EntitiesIter<'e> {
+    type Item = Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::entity::Entities;
-    use crate::World;
+    use crate::{Entity, World};
 
     #[test]
     fn entity_life() {
         let mut entities = Entities::default();
         let entity0 = entities.new_entity();
-        assert_eq!(*entity0.id, 0);
+        assert_eq!(entity0.id, 0);
         let entity1 = entities.new_entity();
-        assert_eq!(*entity1.id, 1);
+        assert_eq!(entity1.id, 1);
         assert!(entities.is_alive(entity0));
         assert!(entities.is_alive(entity1));
         entities.kill(entity0);
         assert!(!entities.is_alive(entity0));
         let entity0 = entities.new_entity();
-        assert_eq!(*entity0.id, 0);
+        assert_eq!(entity0.id, 2);
         assert!(entities.is_alive(entity0));
     }
 
@@ -133,12 +130,10 @@ mod tests {
     fn create_entity_failed() {
         let mut world = World::default();
         let entity = world.create_entity().create();
-        assert_eq!(*entity.id, 0);
+        assert_eq!(entity.id, 0);
         assert!(world.fetch::<Entities>().is_alive(entity));
         world.create_entity();
         let entities = world.fetch::<Entities>();
-        assert!(entities.killed.contains(1));
-        assert!(!entities.alive.contains(1));
-        assert!(!entities.generations.get(1).unwrap().is_alive())
+        assert!(!entities.entities.contains(Entity { id: 1 }));
     }
 }

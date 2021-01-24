@@ -1,5 +1,4 @@
 use proc_macro::TokenStream;
-
 use quote::*;
 use syn::*;
 
@@ -18,13 +17,7 @@ pub fn system(_attr: TokenStream, item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_attribute]
-pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let storage = if attr.is_empty() {
-        parse_quote!(DenseStorageItems)
-    } else {
-        parse_macro_input!(attr as TypePath)
-    };
-
+pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let component_struct = parse_macro_input!(item as ItemStruct);
     let fields: Vec<&Field> = component_struct
         .fields
@@ -81,9 +74,7 @@ pub fn component(attr: TokenStream, item: TokenStream) -> TokenStream {
         #[derive(Clone)]
         #component_struct
 
-        impl Component for #component_name {
-            type StorageItems = #storage<Self>;
-        }
+        impl Component for #component_name {}
 
         #impl_component_with_entity_ref
     };

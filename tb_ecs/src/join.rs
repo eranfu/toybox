@@ -1,72 +1,102 @@
-use hibitset::{BitIter, BitSetAnd, BitSetLike};
+use crate::Entity;
 
-use tb_core::Id;
+pub trait Join<'j>: Sized {
+    type ElementFetcher: ElementFetcher;
 
-pub trait Join: Sized {
-    type BitSet: BitSetLike;
-    type Component;
-    type Components;
-    fn join(self) -> JoinIterator<Self> {
-        let (mask, components) = self.open();
+    fn join(self) -> JoinIterator<'j, Self> {
+        let (entity_iter, fetch_elem) = self.open();
         JoinIterator {
-            mask_iter: mask.iter(),
-            components,
+            entity_iter,
+            fetch_elem,
         }
     }
-    fn open(self) -> (Self::BitSet, Self::Components);
-
-    /// # Safety
-    ///
-    /// There must be component associated with given `Id`.
-    unsafe fn get(components: &mut Self::Components, id: Id) -> Self::Component;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    fn open(self) -> (Box<dyn Iterator<Item = Entity> + 'j>, Self::ElementFetcher);
+    fn elem_fetcher(&mut self) -> Self::ElementFetcher;
 }
 
-pub struct JoinIterator<J: Join> {
-    mask_iter: BitIter<J::BitSet>,
-    components: J::Components,
+pub trait ElementFetcher {
+    type Element;
+    fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element>;
+    fn contains(&self, entity: Entity) -> bool;
 }
 
-impl<J: Join> Iterator for JoinIterator<J> {
-    type Item = J::Component;
+pub struct JoinIterator<'j, J: Join<'j>> {
+    entity_iter: Box<dyn Iterator<Item = Entity> + 'j>,
+    fetch_elem: J::ElementFetcher,
+}
+
+impl<'j, J: Join<'j>> Iterator for JoinIterator<'j, J> {
+    type Item = <<J as Join<'j>>::ElementFetcher as ElementFetcher>::Element;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.mask_iter
-            .next()
-            .map(|id| unsafe { J::get(&mut self.components, id.into()) })
+        let fetch = &mut self.fetch_elem;
+        self.entity_iter.find_map(|entity| fetch.fetch_elem(entity))
     }
-}
-
-macro_rules! bit_set_and {
-    ($b:ty) => { $b };
-    ($b0:ty, $($b1:ty), +) => {
-        BitSetAnd<$b0, bit_set_and!($($b1), +)>
-    };
-    ($b:expr) => { $b };
-    ($b0:expr, $($b1:expr), +) => {
-        BitSetAnd($b0, bit_set_and!($($b1), +))
-    };
 }
 
 macro_rules! impl_join_tuple {
     ($j:ident) => {};
     ($j0:ident, $($j1:ident), +) => {
         impl_join_tuple!($($j1), +);
-        impl<$j0: Join, $($j1: Join), +> Join for ($j0, $($j1), +) {
-            type BitSet = bit_set_and!($j0::BitSet, $($j1::BitSet), +);
-            type Component = ($j0::Component, $($j1::Component), +);
-            type Components = ($j0::Components, $($j1::Components), +);
+
+        impl<$j0: ElementFetcher, $($j1: ElementFetcher), +> ElementFetcher for ($j0, $($j1), +) {
+            type Element = ($j0::Element, $($j1::Element), +);
 
             #[allow(non_snake_case)]
-            fn open(self) -> (Self::BitSet, Self::Components) {
+            fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {
                 let ($j0, $($j1), +) = self;
-                let ($j0, $($j1), +) = ($j0.open(), $($j1.open()), +);
-                (bit_set_and!($j0.0, $($j1.0), +), ($j0.1, $($j1.1), +))
+                let $j0 = $j0.fetch_elem(entity)?;
+                $(let $j1 = $j1.fetch_elem(entity)?);
+                +;
+                Some(($j0, $($j1), +))
             }
 
             #[allow(non_snake_case)]
-            unsafe fn get(components: &mut Self::Components, id: Id) -> Self::Component {
-                let ($j0, $($j1), +) = components;
-                ($j0::get($j0, id), $($j1::get($j1, id)), +)
+            fn contains(&self, entity: Entity) -> bool {
+                let ($j0, $($j1), +) = self;
+                $j0.contains(entity) && $($j1.contains(entity)) && +
+            }
+        }
+
+        impl<'j, $j0: Join<'j>, $($j1: Join<'j>), +> Join<'j> for ($j0, $($j1), +) {
+            type ElementFetcher = ($j0::ElementFetcher, $($j1::ElementFetcher), +);
+
+            #[allow(non_snake_case)]
+            fn len(&self) -> usize {
+                let ($j0, $($j1), +) = self;
+                let res = $j0.len();
+                $(let res = res.min($j1.len()));
+                +;
+                res
+            }
+
+            #[allow(unused_assignments)]
+            #[allow(non_snake_case)]
+            fn open(self) -> (Box<dyn Iterator<Item = Entity> + 'j>, Self::ElementFetcher) {
+                let ($j0, $(mut $j1), +) = self;
+                let mut min_len = $j0.len();
+                let (iter, $j0) = $j0.open();
+                $(let (iter, $j1) = {
+                    let cur_len = $j1.len();
+                    if cur_len < min_len {
+                        min_len = cur_len;
+                        $j1.open()
+                    } else {
+                        (iter, $j1.elem_fetcher())
+                    }
+                });
+                +;
+                (iter, ($j0, $($j1), +))
+            }
+
+            #[allow(non_snake_case)]
+            fn elem_fetcher(&mut self) -> Self::ElementFetcher {
+                let ($j0, $($j1), +) = self;
+                ($j0.elem_fetcher(), $($j1.elem_fetcher()), +)
             }
         }
     };

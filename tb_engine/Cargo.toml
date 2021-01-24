@@ -9,10 +9,8 @@ edition = "2018"
 [dependencies]
 tb_core = { path = "../tb_core" }
 tb_ecs = { path = "../tb_ecs" }
-tb_storage = { path = "../tb_storage" }
 tb_ecs_macro = { path = "../tb_ecs_macro" }
 bimap = "0.5.3"
-hibitset = "0.6.3"
 
 [features]
 editor = []

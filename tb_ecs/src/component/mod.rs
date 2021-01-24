@@ -1,20 +1,16 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut, Not};
 
-use hibitset::{BitSet, BitSetNot};
-
-use tb_core::Id;
-use tb_storage::{Storage, StorageItems};
-
 use crate::entity::Entities;
 use crate::join::Join;
+use crate::sparse_set::{SparseSet, SparseSetFetch, SparseSetFetchMut};
 use crate::system::data::{access_order, AccessOrder};
 use crate::world::ResourceId;
 use crate::{Entity, SystemData, World};
 
-pub trait Component: 'static + Sized + Clone {
-    type StorageItems: StorageItems<Data = Self>;
-}
+mod anti_components;
+
+pub trait Component: 'static + Sized + Clone {}
 
 pub trait EntityRef {
     fn for_each(&mut self, action: &mut impl FnMut(&mut Entity));
@@ -25,15 +21,20 @@ pub trait ComponentWithEntityRef<'e>: Component {
     fn get_entity_ref(&'e mut self) -> Self::Ref;
 }
 
-pub struct ComponentStorage<C: Component> {
-    storage: Storage<C::StorageItems>,
-    _phantom: PhantomData<C>,
-}
+pub type ComponentStorage<C> = SparseSet<C>;
 
-pub struct Components<'r, S: 'r, C: Component, A: AccessOrder> {
+pub struct Components<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
     entities: &'r Entities,
     storage: S,
     _phantom: PhantomData<(C, A)>,
+}
+
+pub trait Storage {
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    fn contains(&self, entity: Entity) -> bool;
 }
 
 pub type ReadComponents<'r, C, A> = Components<'r, &'r ComponentStorage<C>, C, A>;
@@ -42,8 +43,24 @@ pub type RAWComponents<'r, C> = ReadComponents<'r, C, access_order::ReadAfterWri
 pub type WriteComponents<'r, C> =
     Components<'r, &'r mut ComponentStorage<C>, C, access_order::Write>;
 
-pub struct AntiComponents<'r> {
-    mask: BitSetNot<&'r BitSet>,
+impl<'r, C: Component> Storage for &'r ComponentStorage<C> {
+    fn len(&self) -> usize {
+        SparseSet::len(self)
+    }
+
+    fn contains(&self, entity: Entity) -> bool {
+        SparseSet::contains(self, entity)
+    }
+}
+
+impl<'r, C: Component> Storage for &'r mut ComponentStorage<C> {
+    fn len(&self) -> usize {
+        SparseSet::len(self)
+    }
+
+    fn contains(&self, entity: Entity) -> bool {
+        SparseSet::contains(self, entity)
+    }
 }
 
 impl<'e> EntityRef for &'e mut Entity {
@@ -58,7 +75,6 @@ macro_rules! impl_entity_ref_tuple {
         impl_entity_ref_tuple!($($e1), +);
 
         impl<'e, $e0: EntityRef, $($e1: EntityRef), +> EntityRef for ($e0, $($e1), +) {
-
             #[allow(non_snake_case)]
             fn for_each(&mut self, action: &mut impl FnMut(&mut Entity)) {
                 let ($e0, $($e1), +) = self;
@@ -72,91 +88,55 @@ macro_rules! impl_entity_ref_tuple {
 
 impl_entity_ref_tuple!(E0, E1, E2, E3, E4, E5, E6, E7);
 
-impl<C: Component> Default for ComponentStorage<C> {
-    fn default() -> Self {
-        Self {
-            storage: Default::default(),
-            _phantom: Default::default(),
-        }
-    }
-}
-
-impl<C: Component> Deref for ComponentStorage<C> {
-    type Target = Storage<C::StorageItems>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.storage
-    }
-}
-
-impl<C: Component> DerefMut for ComponentStorage<C> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.storage
-    }
-}
-
 impl<'r, C: Component, A: AccessOrder> Not for &'r ReadComponents<'r, C, A> {
-    type Output = AntiComponents<'r>;
+    type Output = anti_components::AntiComponents<'r, &'r ComponentStorage<C>, C, A>;
 
     fn not(self) -> Self::Output {
-        AntiComponents::new(self.storage.open().0)
+        anti_components::AntiComponents::new(self)
     }
 }
 
 impl<'r, C: Component> Not for &'r mut WriteComponents<'r, C> {
-    type Output = AntiComponents<'r>;
+    type Output =
+        anti_components::AntiComponents<'r, &'r mut ComponentStorage<C>, C, access_order::Write>;
 
     fn not(self) -> Self::Output {
-        AntiComponents::new(self.storage.open().0)
+        anti_components::AntiComponents::new(self)
     }
 }
 
-impl<'r> AntiComponents<'r> {
-    fn new(mask: &'r BitSet) -> Self {
-        Self {
-            mask: BitSetNot(mask),
-        }
+impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComponents<'r, C, A> {
+    type ElementFetcher = SparseSetFetch<'r, C>;
+
+    fn len(&self) -> usize {
+        self.storage.len()
+    }
+
+    fn open(self) -> (Box<dyn Iterator<Item = Entity> + 'r>, Self::ElementFetcher) {
+        let (iter, fetch_elem) = self.storage.open();
+        (Box::new(iter), fetch_elem)
+    }
+
+    fn elem_fetcher(&mut self) -> Self::ElementFetcher {
+        self.storage.fetch_elem()
     }
 }
 
-impl<'r> Join for AntiComponents<'r> {
-    type BitSet = BitSetNot<&'r BitSet>;
-    type Component = ();
-    type Components = ();
+impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
+    type ElementFetcher = SparseSetFetchMut<'r, C>;
 
-    fn open(self) -> (Self::BitSet, Self::Components) {
-        (self.mask, ())
+    fn len(&self) -> usize {
+        self.storage.len()
     }
 
-    unsafe fn get(_components: &mut Self::Components, _id: Id) -> Self::Component {}
-}
-
-impl<'r, C: Component, A: AccessOrder> Join for &'r ReadComponents<'r, C, A> {
-    type BitSet = &'r BitSet;
-    type Component = &'r C;
-    type Components = &'r C::StorageItems;
-
-    fn open(self) -> (Self::BitSet, Self::Components) {
-        self.storage.open()
+    fn open(self) -> (Box<dyn Iterator<Item = Entity> + 'r>, Self::ElementFetcher) {
+        let (iter, fetch_elem) = self.storage.open_mut();
+        (Box::new(iter), fetch_elem)
     }
 
-    unsafe fn get(components: &mut Self::Components, id: Id) -> Self::Component {
-        components.get(id)
-    }
-}
-
-impl<'r, C: Component> Join for &'r mut WriteComponents<'r, C> {
-    type BitSet = &'r BitSet;
-    type Component = &'r mut C;
-    type Components = &'r mut C::StorageItems;
-
-    fn open(self) -> (Self::BitSet, Self::Components) {
-        self.storage.open_mut()
-    }
-
-    unsafe fn get(components: &mut Self::Components, id: Id) -> Self::Component {
-        let components: *mut Self::Components = components as *mut Self::Components;
-        (*components).get_mut(id)
+    fn elem_fetcher(&mut self) -> Self::ElementFetcher {
+        let s: &'r mut Self = unsafe { &mut *(self as *mut Self) };
+        s.storage.fetch_elem_mut()
     }
 }
 
@@ -210,7 +190,7 @@ impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
     fn reads_before_write() -> Vec<ResourceId> {
         vec![
             ResourceId::new::<Entities>(),
-            ResourceId::new::<C::StorageItems>(),
+            ResourceId::new::<ComponentStorage<C>>(),
         ]
     }
 }
@@ -221,7 +201,7 @@ impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
     }
 
     fn writes() -> Vec<ResourceId> {
-        vec![ResourceId::new::<C::StorageItems>()]
+        vec![ResourceId::new::<ComponentStorage<C>>()]
     }
 
     fn reads_after_write() -> Vec<ResourceId> {
@@ -237,7 +217,7 @@ impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
     fn reads_after_write() -> Vec<ResourceId> {
         vec![
             ResourceId::new::<Entities>(),
-            ResourceId::new::<C::StorageItems>(),
+            ResourceId::new::<ComponentStorage<C>>(),
         ]
     }
 }
@@ -259,9 +239,11 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+    use tb_ecs_macro::*;
+
     use crate::*;
 
-    #[component(VecStorageItems)]
+    #[component]
     struct Component1 {
         value1: i32,
     }
@@ -328,6 +310,19 @@ mod tests {
 
         for (_, _) in (!&components1, &components2).join() {
             unreachable!()
+        }
+    }
+
+    #[test]
+    fn write_components_open() {
+        let mut world = World::default();
+        world
+            .create_entity()
+            .with(Component1 { value1: 10 })
+            .create();
+        let mut components1 = WriteComponents::<Component1>::fetch(&world);
+        for component1 in (&mut components1).join() {
+            assert_eq!(component1.value1, 10);
         }
     }
 }

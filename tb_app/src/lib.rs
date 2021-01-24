@@ -1,6 +1,6 @@
 use rayon::{ThreadPool, ThreadPoolBuilder};
 
-use tb_core::AnyError;
+use tb_core::error::AnyError;
 use tb_ecs::{Scheduler, World};
 
 pub struct Application {

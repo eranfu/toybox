@@ -1,11 +1,8 @@
 use bimap::BiHashMap;
-use hibitset::BitSetLike;
-
-use tb_core::Id;
 use tb_ecs::*;
 
 pub struct Prefab {
-    root_entity: Id,
+    root_entity: Entity,
     components: Vec<Box<dyn Components>>,
 }
 
@@ -20,7 +17,7 @@ pub trait ConvertToWorld {
 #[component]
 #[derive(Default)]
 pub struct PrefabLink {
-    local_entity_to_world_map: BiHashMap<Id, Entity>,
+    local_entity_to_world_map: BiHashMap<Entity, Entity>,
 }
 
 impl<C> Components for ComponentStorage<C>
@@ -28,15 +25,15 @@ where
     C: Component,
 {
     default fn attach(&self, world: &mut World, link: &mut PrefabLink) {
-        let (mask, components) = self.open();
         world.insert_storage::<C>();
         world.insert(Entities::default);
         let storage = world.fetch_storage_mut::<C>();
         let entities = world.fetch_mut::<Entities>();
-        mask.iter().map(Id::from).for_each(|id| {
+        let (entity, mut component) = self.open();
+        entity.for_each(|e| {
             storage.insert(
-                link.build_link(id, entities).id(),
-                unsafe { components.get(id) }.clone(),
+                link.build_link(e, entities),
+                component.fetch_elem(e).unwrap().clone(),
             );
         });
     }
@@ -47,22 +44,22 @@ where
     for<'e> C: ComponentWithEntityRef<'e>,
 {
     fn attach(&self, world: &mut World, link: &mut PrefabLink) {
-        let (mask, components) = self.open();
         world.insert_storage::<C>();
         let storage = world.fetch_storage_mut::<C>();
         let entities = world.fetch_mut::<Entities>();
-        mask.iter().map(Id::from).for_each(|id| {
-            let mut component: C = unsafe { components.get(id) }.clone();
+        let (entity, mut components) = self.open();
+        entity.for_each(|e| {
+            let mut component: C = components.fetch_elem(e).unwrap().clone();
             let mut entity_ref = component.get_entity_ref();
             ConvertToWorld::convert_to_world(&mut entity_ref, link, entities);
             drop(entity_ref);
-            storage.insert(link.build_link(id, entities).id(), component);
+            storage.insert(link.build_link(e, entities), component);
         });
     }
 }
 
 impl PrefabLink {
-    fn build_link(&mut self, local: Id, entities: &mut Entities) -> Entity {
+    fn build_link(&mut self, local: Entity, entities: &mut Entities) -> Entity {
         match self.local_entity_to_world_map.get_by_left(&local) {
             None => {
                 let entity = entities.new_entity();
@@ -88,17 +85,16 @@ impl Prefab {
         }
         world.insert(Entities::default);
         world.insert_storage::<PrefabLink>();
-        world.fetch_storage_mut::<PrefabLink>().insert(
-            link.build_link(self.root_entity, world.fetch_mut()).id(),
-            link,
-        );
+        world
+            .fetch_storage_mut::<PrefabLink>()
+            .insert(link.build_link(self.root_entity, world.fetch_mut()), link);
     }
 }
 
 impl<E: EntityRef> ConvertToWorld for E {
     default fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
         self.for_each(&mut |e: &mut Entity| {
-            *e = link.build_link(e.id(), entities);
+            *e = link.build_link(*e, entities);
         });
     }
 }
@@ -135,17 +131,18 @@ mod tests {
 
         let prefab = {
             let mut components0 = ComponentStorage::<Component0>::default();
-            components0.insert(10.into(), Component0 { value: 10 });
+
+            components0.insert(Entity::new(10), Component0 { value: 10 });
             let mut components1 = ComponentStorage::<Component1>::default();
             components1.insert(
-                7.into(),
+                Entity::new(7),
                 Component1 {
                     entity_a: entities[15],
                 },
             );
             let mut components2 = ComponentStorage::<Component2>::default();
             components2.insert(
-                15.into(),
+                Entity::new(15),
                 Component2 {
                     entity_a: entities[7],
                     entity_b: entities[10],
@@ -157,7 +154,7 @@ mod tests {
                 Box::new(components2),
             ];
             Prefab {
-                root_entity: 15.into(),
+                root_entity: Entity::new(15),
                 components,
             }
         };
@@ -176,12 +173,12 @@ mod tests {
         }
         for component1 in components1.join() {
             let component1: &Component1 = component1;
-            assert_eq!(component1.entity_a.id(), 1.into());
+            assert_eq!(component1.entity_a, Entity::new(1));
         }
         for component2 in components2.join() {
             let component2: &Component2 = component2;
-            assert_eq!(component2.entity_a.id(), 2.into());
-            assert_eq!(component2.entity_b.id(), 0.into());
+            assert_eq!(component2.entity_a, Entity::new(2));
+            assert_eq!(component2.entity_b, Entity::new(0));
         }
     }
 }

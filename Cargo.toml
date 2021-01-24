@@ -10,7 +10,6 @@ edition = "2018"
 members = [
     "tb_core",
     "tb_engine",
-    "tb_storage",
     "tb_ecs",
     "tb_ecs_macro",
     "tb_gameplay",
