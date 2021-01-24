@@ -8,8 +8,3 @@ edition = "2018"
 
 [dependencies]
 tb_engine = { path = "../tb_engine" }
-
-[features]
-editor = ["tb_engine/editor"]
-client = ["tb_engine/client"]
-server = ["tb_engine/server"]

@@ -24,8 +24,7 @@ mod tests {
 
     #[test]
     fn empty_system_data() {
-        let mut thread_pool = ThreadPoolBuilder::new().build().unwrap();
-        let mut scheduler = Scheduler::new(&mut thread_pool);
+        let mut scheduler = Scheduler::default();
         scheduler.insert(TestSystem {});
         let world = World::default();
         scheduler.schedule(&world);

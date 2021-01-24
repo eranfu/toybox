@@ -11,8 +11,3 @@ tb_core = { path = "../tb_core" }
 tb_ecs = { path = "../tb_ecs" }
 tb_ecs_macro = { path = "../tb_ecs_macro" }
 bimap = "0.5.3"
-
-[features]
-editor = []
-client = []
-server = []

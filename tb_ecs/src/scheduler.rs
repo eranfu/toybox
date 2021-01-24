@@ -1,13 +1,43 @@
 use std::any::TypeId;
 use std::cell::RefCell;
 
-use rayon::ThreadPool;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 
 use crate::{System, SystemData, World};
 
-pub struct Scheduler<'t> {
-    thread_pool: &'t mut ThreadPool,
+pub struct Scheduler {
+    thread_pool: ThreadPool,
     stages: Vec<Stage>,
+}
+
+impl Scheduler {
+    pub(crate) fn insert<R: Runnable>(&mut self, runnable: R) {
+        self.stages
+            .push(Stage::new(self.thread_pool.current_num_threads() * 2));
+        let last_stage = self.stages.last_mut().unwrap();
+        last_stage.groups[0]
+            .runnable_list
+            .push(Box::new(RefCell::new(runnable)));
+    }
+
+    pub fn schedule(&self, world: &World) {
+        for stage in &self.stages {
+            for group in &stage.groups {
+                for runnable in &group.runnable_list {
+                    runnable.borrow_mut().run(world);
+                }
+            }
+        }
+    }
+}
+
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self {
+            thread_pool: ThreadPoolBuilder::default().build().unwrap(),
+            stages: vec![],
+        }
+    }
 }
 
 struct Stage {
@@ -43,34 +73,6 @@ impl RunnableId {
     fn new<R: Runnable>() -> Self {
         Self {
             type_id: TypeId::of::<R>(),
-        }
-    }
-}
-
-impl<'t> Scheduler<'t> {
-    pub fn new(thread_pool: &'t mut ThreadPool) -> Self {
-        Self {
-            thread_pool,
-            stages: vec![],
-        }
-    }
-
-    pub(crate) fn insert<R: Runnable>(&mut self, runnable: R) {
-        self.stages
-            .push(Stage::new(self.thread_pool.current_num_threads() * 2));
-        let last_stage = self.stages.last_mut().unwrap();
-        last_stage.groups[0]
-            .runnable_list
-            .push(Box::new(RefCell::new(runnable)));
-    }
-
-    pub fn schedule(&self, world: &World) {
-        for stage in &self.stages {
-            for group in &stage.groups {
-                for runnable in &group.runnable_list {
-                    runnable.borrow_mut().run(world);
-                }
-            }
         }
     }
 }
@@ -123,8 +125,7 @@ mod tests {
     #[test]
     fn scheduler_works() {
         let mut world = World::default();
-        let mut thread_pool = ThreadPoolBuilder::new().build().unwrap();
-        let mut scheduler = Scheduler::new(&mut thread_pool);
+        let mut scheduler = Scheduler::default();
         world.insert(|| TestResource { value: 10 });
         world.insert(|| OtherResource { value: 100 });
         assert_eq!(world.fetch::<TestResource>().value, 10);
