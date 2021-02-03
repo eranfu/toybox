@@ -1,5 +1,5 @@
 #![feature(specialization)]
 
 mod asset;
-mod level;
+pub mod level;
 mod prefab;

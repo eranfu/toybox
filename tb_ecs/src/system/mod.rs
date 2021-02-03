@@ -10,10 +10,9 @@ pub trait System<'r> {
 
 #[cfg(test)]
 mod tests {
-    use rayon::ThreadPoolBuilder;
+    use crate::*;
 
-    use crate::{Scheduler, System, World};
-
+    #[system]
     struct TestSystem {}
 
     impl System<'_> for TestSystem {

@@ -88,13 +88,12 @@ where
 
 #[cfg(test)]
 mod tests {
-    use rayon::ThreadPoolBuilder;
+    use crate::*;
 
-    use crate::system::data::{Write, RAW};
-    use crate::{Scheduler, System, World};
-
+    #[system]
     struct TestSystem {}
 
+    #[system]
     struct OtherSystem {}
 
     struct TestResource {

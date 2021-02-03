@@ -4,7 +4,10 @@ use crate::scheduler::Runnable;
 use crate::world::ResourceId;
 use crate::*;
 
-pub struct SystemRegistry;
+pub struct SystemRegistry {
+    systems: Vec<SystemInfo>,
+    system_dependency: tb_core::algorithm::topological_sort::Dependency<&'static SystemInfo>,
+}
 
 impl SystemRegistry {
     pub fn iter() -> iter<SystemInfo> {
@@ -63,7 +66,6 @@ mod tests {
         let mut has = false;
         for x in SystemRegistry::iter() {
             has = true;
-            assert_eq!(x.name, std::any::type_name::<TestSystem>())
         }
         assert!(has);
         let mut has = false;
