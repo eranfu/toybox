@@ -135,7 +135,7 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
     }
 
     fn elem_fetcher(&mut self) -> Self::ElementFetcher {
-        let s: &'r mut Self = unsafe { &mut *(self as *mut Self) };
+        let s: &'r mut Self = unsafe { std::mem::transmute(self) };
         s.storage.fetch_elem_mut()
     }
 }

@@ -142,7 +142,7 @@ impl<'s, T> join::ElementFetcher for SparseSetFetchMut<'s, T> {
 
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {
         self.entity_to_index.get(entity).map(|index| {
-            let s: &'s mut Self = unsafe { &mut *(self as *mut Self) };
+            let s: &'s mut Self = unsafe { std::mem::transmute(self) };
             &mut s.data[*index]
         })
     }

@@ -3,10 +3,11 @@ use inventory::iter;
 use crate::scheduler::Runnable;
 use crate::world::ResourceId;
 use crate::*;
+use std::hash::{Hash, Hasher};
 
 pub struct SystemRegistry {
     systems: Vec<SystemInfo>,
-    system_dependency: tb_core::algorithm::topological_sort::Dependency<&'static SystemInfo>,
+    system_topo_graph: tb_core::algorithm::topological_sort::TopologicalGraph<&'static SystemInfo>,
 }
 
 impl SystemRegistry {
@@ -44,6 +45,20 @@ impl SystemInfo {
     }
 }
 
+impl PartialEq for &SystemInfo {
+    fn eq(&self, other: &Self) -> bool {
+        (*self as *const SystemInfo).eq(&(*other as *const SystemInfo))
+    }
+}
+
+impl Eq for &SystemInfo {}
+
+impl Hash for &SystemInfo {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        (*self as *const SystemInfo).hash(state);
+    }
+}
+
 inventory::collect!(SystemInfo);
 
 #[cfg(test)]
@@ -69,9 +84,8 @@ mod tests {
         }
         assert!(has);
         let mut has = false;
-        for x in SystemRegistry::iter() {
+        for _x in SystemRegistry::iter() {
             has = true;
-            assert_eq!(x.name, std::any::type_name::<TestSystem>())
         }
         assert!(has);
     }
