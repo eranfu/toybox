@@ -9,12 +9,26 @@ struct Node<T> {
     dependencies: HashSet<T>,
 }
 
-#[derive(Default)]
 pub struct TopologicalGraph<T: Eq + Hash + Clone> {
     nodes: HashMap<T, Node<T>>,
 }
 
+impl<T: Eq + Hash + Clone> Default for TopologicalGraph<T> {
+    fn default() -> Self {
+        Self {
+            nodes: Default::default(),
+        }
+    }
+}
+
 impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
+    pub fn add_item(&mut self, item: T) {
+        self.nodes.entry(item).or_insert_with_key(|item| Node {
+            item: item.clone(),
+            dependencies: Default::default(),
+        });
+    }
+
     /// # Description
     /// `a` dependency `b`
     pub fn add_dependency(&mut self, a: T, b: T) {

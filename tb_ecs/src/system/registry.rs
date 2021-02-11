@@ -1,19 +1,99 @@
-use inventory::iter;
-
 use crate::scheduler::Runnable;
 use crate::world::ResourceId;
 use crate::*;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
+use std::lazy::SyncOnceCell;
+use tb_core::algorithm::topological_sort::VisitorWithFlag;
 
 pub struct SystemRegistry {
-    systems: Vec<SystemInfo>,
-    system_topo_graph: tb_core::algorithm::topological_sort::TopologicalGraph<&'static SystemInfo>,
+    systems: Vec<&'static SystemInfo>,
+    resources_info: HashMap<ResourceId, ResourceInfo>,
+    system_topological_graph:
+        tb_core::algorithm::topological_sort::TopologicalGraph<&'static SystemInfo>,
 }
 
 impl SystemRegistry {
-    pub fn iter() -> iter<SystemInfo> {
-        inventory::iter::<SystemInfo>
+    pub fn get_instance() -> &'static SystemRegistry {
+        static SYSTEM_REGISTRY: SyncOnceCell<SystemRegistry> = SyncOnceCell::new();
+        SYSTEM_REGISTRY.get_or_init(|| {
+            let mut registry = SystemRegistry {
+                systems: Default::default(),
+                resources_info: Default::default(),
+                system_topological_graph: Default::default(),
+            };
+
+            for system_info in inventory::iter::<SystemInfo> {
+                registry.systems.push(system_info);
+            }
+
+            let resources_info = &mut registry.resources_info;
+            registry.systems.iter().for_each(|system_info| {
+                system_info
+                    .reads_before_write
+                    .iter()
+                    .for_each(|resource_id| {
+                        resources_info
+                            .entry(*resource_id)
+                            .or_insert_with(ResourceInfo::default)
+                            .read_before_write_systems
+                            .insert(system_info);
+                    });
+                system_info.writes.iter().for_each(|resource_id| {
+                    resources_info
+                        .entry(*resource_id)
+                        .or_insert_with(ResourceInfo::default)
+                        .write_systems
+                        .insert(system_info);
+                });
+                system_info
+                    .reads_after_write
+                    .iter()
+                    .for_each(|resource_id| {
+                        resources_info
+                            .entry(*resource_id)
+                            .or_insert_with(ResourceInfo::default)
+                            .read_after_write_systems
+                            .insert(system_info);
+                    });
+            });
+
+            let graph = &mut registry.system_topological_graph;
+            registry.systems.iter().for_each(|system_info| {
+                graph.add_item(system_info);
+                system_info.writes.iter().for_each(|write_resource| {
+                    let write_resource_info = resources_info.get(write_resource).unwrap();
+                    write_resource_info
+                        .read_before_write_systems
+                        .iter()
+                        .for_each(|read_before_write_system| {
+                            graph.add_dependency(system_info, read_before_write_system);
+                        });
+                    write_resource_info
+                        .read_after_write_systems
+                        .iter()
+                        .for_each(|read_after_write_system| {
+                            graph.add_dependency(read_after_write_system, system_info);
+                        });
+                });
+            });
+
+            registry
+        })
     }
+
+    pub fn systems() -> VisitorWithFlag<'static, &'static SystemInfo, usize> {
+        SystemRegistry::get_instance()
+            .system_topological_graph
+            .visit_with_flag()
+    }
+}
+
+#[derive(Default)]
+pub struct ResourceInfo {
+    read_before_write_systems: HashSet<&'static SystemInfo>,
+    write_systems: HashSet<&'static SystemInfo>,
+    read_after_write_systems: HashSet<&'static SystemInfo>,
 }
 
 pub struct SystemInfo {
@@ -67,7 +147,7 @@ mod tests {
 
     #[system]
     struct TestSystem {
-        value: i32,
+        _value: i32,
     }
 
     impl System<'_> for TestSystem {
@@ -79,12 +159,12 @@ mod tests {
     #[test]
     fn it_works() {
         let mut has = false;
-        for x in SystemRegistry::iter() {
+        for _x in SystemRegistry::systems() {
             has = true;
         }
         assert!(has);
         let mut has = false;
-        for _x in SystemRegistry::iter() {
+        for _x in SystemRegistry::systems() {
             has = true;
         }
         assert!(has);

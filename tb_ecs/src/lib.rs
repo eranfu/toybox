@@ -1,3 +1,5 @@
+#![feature(once_cell)]
+
 pub use component::*;
 pub use entity::Entities;
 pub use entity::Entity;

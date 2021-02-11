@@ -18,7 +18,7 @@ struct FetchError<R: Resource> {
     _phantom: PhantomData<R>,
 }
 
-#[derive(Eq, PartialEq, Hash)]
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
 pub struct ResourceId {
     id: TypeId,
 }
