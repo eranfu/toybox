@@ -1,4 +1,5 @@
 use bimap::BiHashMap;
+
 use tb_ecs::*;
 
 pub struct Prefab {
@@ -25,9 +26,9 @@ where
     C: Component,
 {
     default fn attach(&self, world: &mut World, link: &mut PrefabLink) {
-        world.insert_storage::<C>();
+        world.insert_components::<C>();
         world.insert(Entities::default);
-        let storage = world.fetch_storage_mut::<C>();
+        let storage = world.fetch_components_mut::<C>();
         let entities = world.fetch_mut::<Entities>();
         let (entity, mut component) = self.open();
         entity.for_each(|e| {
@@ -44,8 +45,8 @@ where
     for<'e> C: ComponentWithEntityRef<'e>,
 {
     fn attach(&self, world: &mut World, link: &mut PrefabLink) {
-        world.insert_storage::<C>();
-        let storage = world.fetch_storage_mut::<C>();
+        world.insert_components::<C>();
+        let storage = world.fetch_components_mut::<C>();
         let entities = world.fetch_mut::<Entities>();
         let (entity, mut components) = self.open();
         entity.for_each(|e| {
@@ -84,9 +85,9 @@ impl Prefab {
             components.attach(world, &mut link);
         }
         world.insert(Entities::default);
-        world.insert_storage::<PrefabLink>();
+        world.insert_components::<PrefabLink>();
         world
-            .fetch_storage_mut::<PrefabLink>()
+            .fetch_components_mut::<PrefabLink>()
             .insert(link.build_link(self.root_entity, world.fetch_mut()), link);
     }
 }

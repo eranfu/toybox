@@ -14,14 +14,12 @@ pub trait Join<'j>: Sized {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    fn open(self) -> (Box<dyn Iterator<Item = Entity> + 'j>, Self::ElementFetcher);
     fn elem_fetcher(&mut self) -> Self::ElementFetcher;
 }
 
 pub trait ElementFetcher {
     type Element;
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element>;
-    fn contains(&self, entity: Entity) -> bool;
 }
 
 pub struct JoinIterator<'j, J: Join<'j>> {

@@ -1,8 +1,10 @@
-use std::ops::Deref;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 
-use crate::sparse_set::{SparseSet, SparseSetEntityIter};
-use crate::{Component, World};
+use bit_set::BitSet;
+
+use crate::{Component, ComponentIndex, SystemData, World, Write, WriteComponents};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Entity {
@@ -15,10 +17,79 @@ impl Entity {
     }
 }
 
+#[derive(Eq, PartialEq, Clone, Default, Hash)]
+struct ComponentMask(BitSet<usize>);
+
 #[derive(Default)]
 pub struct Entities {
-    entities: SparseSet<()>,
-    next_id: AtomicU64,
+    next_id: u64,
+    len: usize,
+    entity_to_index: HashMap<Entity, (usize, usize)>,
+    component_mask_to_archetype_index: HashMap<ComponentMask, usize>,
+    archetypes_entities: Vec<Vec<Entity>>,
+    archetypes_components: Vec<ComponentMask>,
+    archetypes_add_to_next: Vec<HashMap<ComponentIndex, usize>>,
+    archetypes_remove_to_next: Vec<HashMap<ComponentIndex, usize>>,
+}
+
+impl Entities {
+    pub(crate) fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn new_entity(&mut self) -> Entity {
+        let id = self.next_id;
+        self.next_id += 1;
+        let entity = Entity { id };
+        let archetype = self.get_or_insert_archetype(ComponentMask::default());
+        self.entity_to_index
+            .insert(entity, (archetype, self.push_entity(archetype, entity)));
+        self.len += 1;
+        entity
+    }
+
+    ///
+    /// # return
+    /// entity index in archetype
+    fn push_entity(&mut self, archetype: usize, entity: Entity) -> usize {
+        let entities = &mut self.archetypes_entities[archetype];
+        let entity_index = entities.len();
+        entities.push(entity);
+        entity_index
+    }
+
+    fn get_or_insert_archetype(&mut self, mask: ComponentMask) -> usize {
+        match self.component_mask_to_archetype_index.entry(mask) {
+            Entry::Occupied(occupied) => *occupied.get(),
+            Entry::Vacant(vacant) => {
+                let archetype = self.archetypes_components.len();
+                vacant.insert(archetype);
+                self.archetypes_components.push(vacant.key().clone());
+                self.archetypes_entities.push(Default::default());
+                self.archetypes_add_to_next.push(Default::default());
+                self.archetypes_remove_to_next.push(Default::default());
+                archetype
+            }
+        }
+    }
+
+    pub fn kill(&mut self, entity: Entity) {
+        if !self.is_alive(entity) {
+            return;
+        }
+
+        self.archetypes.get_of_entity_mut(entity).remove(entity);
+    }
+
+    pub fn is_alive(&self, entity: Entity) -> bool {
+        self.entities.contains(entity)
+    }
+
+    pub fn iter(&self) -> EntitiesIter {
+        EntitiesIter {
+            inner: self.entities.iter(),
+        }
+    }
 }
 
 pub struct EntityCreator<'r> {
@@ -27,18 +98,12 @@ pub struct EntityCreator<'r> {
     world: &'r mut World,
 }
 
-impl Deref for Entities {
-    type Target = SparseSet<()>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.entities
-    }
-}
-
 impl EntityCreator<'_> {
     pub fn with<C: Component>(&mut self, c: C) -> &mut Self {
-        let storage = self.world.insert_storage::<C>();
-        storage.insert(self.entity, c);
+        self.world.insert_components::<C>();
+        let components = WriteComponents::<C>::fetch(self.world);
+        components..insert(self.entity, c);
+
         self
     }
     pub fn create(&mut self) -> Entity {
@@ -62,33 +127,6 @@ impl World {
             created: false,
             entity,
             world: self,
-        }
-    }
-}
-
-impl Entities {
-    pub fn new_entity(&mut self) -> Entity {
-        let id = self.next_id.fetch_add(1, Ordering::Relaxed);
-        let entity = Entity { id };
-        self.entities.insert(entity, ());
-        entity
-    }
-
-    pub fn kill(&mut self, entity: Entity) {
-        if !self.is_alive(entity) {
-            return;
-        }
-
-        self.entities.remove(entity);
-    }
-
-    pub fn is_alive(&self, entity: Entity) -> bool {
-        self.entities.contains(entity)
-    }
-
-    pub fn iter(&self) -> EntitiesIter {
-        EntitiesIter {
-            inner: self.entities.iter(),
         }
     }
 }

@@ -1,5 +1,6 @@
-use tb_ecs::World;
+use tb_ecs::*;
 
+use crate::asset::{AssetHandle, AssetLoader};
 use crate::prefab::Prefab;
 
 pub struct Level {
@@ -10,4 +11,10 @@ impl Level {
     pub fn attach(&self, world: &mut World) {
         self.root.attach(world);
     }
+}
+
+#[derive(Default)]
+pub struct LevelManager {
+    pub current_level: Option<AssetHandle<Level>>,
+    pub pending_level: Option<AssetHandle<Level>>,
 }

@@ -1,5 +1,7 @@
 #![feature(once_cell)]
 
+pub use inventory;
+
 pub use component::*;
 pub use entity::Entities;
 pub use entity::Entity;
@@ -21,6 +23,5 @@ mod component;
 mod entity;
 mod join;
 mod scheduler;
-mod sparse_set;
 mod system;
 mod world;

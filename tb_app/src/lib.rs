@@ -1,6 +1,8 @@
 use std::{env, io, path};
+
 use tb_core::error::AnyError;
 use tb_ecs::{Scheduler, SystemInfo, World};
+use tb_engine::level::LevelManager;
 
 pub struct Application {
     env_args: Vec<String>,
@@ -32,11 +34,14 @@ impl Application {
     }
 
     pub fn run(&mut self) {
-        let mut scheduler = Scheduler::default();
         let mut world = World::default();
-
         loop {
-            scheduler.schedule(&world);
+            let level_manager: &mut LevelManager = world.insert(LevelManager::default);
+            world.insert_components()
+            if let Some(pending_level) = level_manager.pending_level.take() {
+                world
+            }
+            world.update();
         }
     }
 }

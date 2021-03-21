@@ -1,14 +1,18 @@
 use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut, Not};
 
+use crate::component::storage::ComponentStorage;
 use crate::entity::Entities;
 use crate::join::Join;
-use crate::sparse_set::{SparseSet, SparseSetFetch, SparseSetFetchMut};
 use crate::system::data::{access_order, AccessOrder};
 use crate::world::ResourceId;
 use crate::{Entity, SystemData, World};
 
 mod anti_components;
+mod storage;
+
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+pub struct ComponentIndex(usize);
 
 pub trait Component: 'static + Sized + Clone {}
 
@@ -20,8 +24,6 @@ pub trait ComponentWithEntityRef<'e>: Component {
     type Ref: 'e + EntityRef;
     fn get_entity_ref(&'e mut self) -> Self::Ref;
 }
-
-pub type ComponentStorage<C> = SparseSet<C>;
 
 pub struct Components<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
     entities: &'r Entities,
@@ -45,21 +47,21 @@ pub type WriteComponents<'r, C> =
 
 impl<'r, C: Component> Storage for &'r ComponentStorage<C> {
     fn len(&self) -> usize {
-        SparseSet::len(self)
+        ComponentStorage::len(self)
     }
 
     fn contains(&self, entity: Entity) -> bool {
-        SparseSet::contains(self, entity)
+        ComponentStorage::contains(self, entity)
     }
 }
 
 impl<'r, C: Component> Storage for &'r mut ComponentStorage<C> {
     fn len(&self) -> usize {
-        SparseSet::len(self)
+        ComponentStorage::len(self)
     }
 
     fn contains(&self, entity: Entity) -> bool {
-        SparseSet::contains(self, entity)
+        ComponentStorage::contains(self, entity)
     }
 }
 
@@ -106,37 +108,27 @@ impl<'r, C: Component> Not for &'r mut WriteComponents<'r, C> {
 }
 
 impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComponents<'r, C, A> {
-    type ElementFetcher = SparseSetFetch<'r, C>;
+    type ElementFetcher = &'r ComponentStorage<C>;
 
     fn len(&self) -> usize {
         self.storage.len()
     }
 
-    fn open(self) -> (Box<dyn Iterator<Item = Entity> + 'r>, Self::ElementFetcher) {
-        let (iter, fetch_elem) = self.storage.open();
-        (Box::new(iter), fetch_elem)
-    }
-
     fn elem_fetcher(&mut self) -> Self::ElementFetcher {
-        self.storage.fetch_elem()
+        self.storage
     }
 }
 
 impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
-    type ElementFetcher = SparseSetFetchMut<'r, C>;
+    type ElementFetcher = &'r mut ComponentStorage<C>;
 
     fn len(&self) -> usize {
         self.storage.len()
     }
 
-    fn open(self) -> (Box<dyn Iterator<Item = Entity> + 'r>, Self::ElementFetcher) {
-        let (iter, fetch_elem) = self.storage.open_mut();
-        (Box::new(iter), fetch_elem)
-    }
-
     fn elem_fetcher(&mut self) -> Self::ElementFetcher {
         let s: &'r mut Self = unsafe { std::mem::transmute(self) };
-        s.storage.fetch_elem_mut()
+        s.storage
     }
 }
 
@@ -166,7 +158,7 @@ impl<'r, C: Component, A: AccessOrder> ReadComponents<'r, C, A> {
     fn new(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
-            storage: world.fetch_storage::<C>(),
+            storage: world.fetch_components::<C>(),
             _phantom: Default::default(),
         }
     }
@@ -176,7 +168,7 @@ impl<'r, C: Component> WriteComponents<'r, C> {
     fn new(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
-            storage: world.fetch_storage_mut::<C>(),
+            storage: world.fetch_components_mut::<C>(),
             _phantom: Default::default(),
         }
     }
@@ -223,16 +215,16 @@ impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
 }
 
 impl World {
-    pub fn fetch_storage<C: Component>(&self) -> &ComponentStorage<C> {
+    pub fn fetch_components<C: Component>(&self) -> &ComponentStorage<C> {
         self.fetch()
     }
 
     #[allow(clippy::mut_from_ref)]
-    pub fn fetch_storage_mut<C: Component>(&self) -> &mut ComponentStorage<C> {
+    pub fn fetch_components_mut<C: Component>(&self) -> &mut ComponentStorage<C> {
         self.fetch_mut()
     }
 
-    pub fn insert_storage<C: Component>(&mut self) -> &mut ComponentStorage<C> {
+    pub fn insert_components<C: Component>(&mut self) -> &mut ComponentStorage<C> {
         self.insert(ComponentStorage::<C>::default)
     }
 }
@@ -241,6 +233,7 @@ impl World {
 mod tests {
     use tb_ecs_macro::*;
 
+    use crate::component::storage::ComponentStorage;
     use crate::*;
 
     #[component]
