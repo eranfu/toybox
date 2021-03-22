@@ -27,7 +27,7 @@ pub struct Entities {
     entity_to_index: HashMap<Entity, (usize, usize)>,
     component_mask_to_archetype_index: HashMap<ComponentMask, usize>,
     archetypes_entities: Vec<Vec<Entity>>,
-    archetypes_components: Vec<ComponentMask>,
+    archetypes_component_mask: Vec<ComponentMask>,
     archetypes_add_to_next: Vec<HashMap<ComponentIndex, usize>>,
     archetypes_remove_to_next: Vec<HashMap<ComponentIndex, usize>>,
 }
@@ -62,9 +62,9 @@ impl Entities {
         match self.component_mask_to_archetype_index.entry(mask) {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {
-                let archetype = self.archetypes_components.len();
+                let archetype = self.archetypes_component_mask.len();
                 vacant.insert(archetype);
-                self.archetypes_components.push(vacant.key().clone());
+                self.archetypes_component_mask.push(vacant.key().clone());
                 self.archetypes_entities.push(Default::default());
                 self.archetypes_add_to_next.push(Default::default());
                 self.archetypes_remove_to_next.push(Default::default());
@@ -74,11 +74,10 @@ impl Entities {
     }
 
     pub fn kill(&mut self, entity: Entity) {
-        if !self.is_alive(entity) {
-            return;
+        if let Some(&(archetype, entity_index)) = self.entity_to_index.get(&entity) {
+            self.archetypes_entities[archetype].swap_remove(entity_index);
+            for component_index in self.archetypes_component_mask[archetype].0.iter() {}
         }
-
-        self.archetypes.get_of_entity_mut(entity).remove(entity);
     }
 
     pub fn is_alive(&self, entity: Entity) -> bool {

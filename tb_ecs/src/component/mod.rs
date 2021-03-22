@@ -1,18 +1,16 @@
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut, Not};
+use std::ops::{Deref, DerefMut, Index, Not};
 
 use crate::component::storage::ComponentStorage;
-use crate::entity::Entities;
+use crate::entity::{Entities, EntitiesIter};
 use crate::join::Join;
 use crate::system::data::{access_order, AccessOrder};
 use crate::world::ResourceId;
 use crate::{Entity, SystemData, World};
 
 mod anti_components;
+mod registry;
 mod storage;
-
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-pub struct ComponentIndex(usize);
 
 pub trait Component: 'static + Sized + Clone {}
 
