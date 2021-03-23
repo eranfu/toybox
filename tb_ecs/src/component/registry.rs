@@ -1,6 +1,4 @@
-use std::slice::SliceIndex;
-
-use crate::{ComponentIndex, Entity, World};
+use crate::{Entity, World};
 
 pub struct ComponentRegistry {
     infos: Vec<ComponentInfo>,
@@ -14,5 +12,4 @@ pub struct ComponentInfo {
     operation: Box<dyn ComponentOperation>,
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash)]
-pub struct ComponentIndex(usize);
+inventory::collect!(ComponentInfo);

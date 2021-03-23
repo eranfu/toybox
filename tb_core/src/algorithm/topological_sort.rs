@@ -13,14 +13,6 @@ pub struct TopologicalGraph<T: Eq + Hash + Clone> {
     nodes: HashMap<T, Node<T>>,
 }
 
-impl<T: Eq + Hash + Clone> Default for TopologicalGraph<T> {
-    fn default() -> Self {
-        Self {
-            nodes: Default::default(),
-        }
-    }
-}
-
 impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
     pub fn add_item(&mut self, item: T) {
         self.nodes.entry(item).or_insert_with_key(|item| Node {
@@ -32,6 +24,9 @@ impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
     /// # Description
     /// `a` dependency `b`
     pub fn add_dependency(&mut self, a: T, b: T) {
+        if a == b {
+            return;
+        }
         self.nodes.entry(b.clone()).or_insert_with_key(|b| Node {
             item: b.clone(),
             dependencies: Default::default(),
@@ -46,8 +41,29 @@ impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
             .insert(b);
     }
 
+    /// # Description
+    /// `a` dependency `b`
+    pub fn add_dependency_if_non_inverse(&mut self, a: T, b: T) {
+        let node_b = match self.nodes.get(&b) {
+            None => return,
+            Some(node_b) => node_b,
+        };
+        if node_b.dependencies.contains(&a) {
+            return;
+        }
+        self.add_dependency(a, b)
+    }
+
     pub fn visit_with_flag<F: Clone + Ord>(&self) -> VisitorWithFlag<T, F> {
         VisitorWithFlag::new(self)
+    }
+}
+
+impl<T: Eq + Hash + Clone> Default for TopologicalGraph<T> {
+    fn default() -> Self {
+        Self {
+            nodes: Default::default(),
+        }
     }
 }
 

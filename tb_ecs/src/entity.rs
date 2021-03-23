@@ -1,10 +1,12 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
+use std::iter::Flatten;
+use std::slice::Iter;
 
 use bit_set::BitSet;
 
-use crate::{Component, ComponentIndex, SystemData, World, Write, WriteComponents};
+use crate::{Component, SystemData, World, WriteComponents};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Entity {
@@ -28,8 +30,8 @@ pub struct Entities {
     component_mask_to_archetype_index: HashMap<ComponentMask, usize>,
     archetypes_entities: Vec<Vec<Entity>>,
     archetypes_component_mask: Vec<ComponentMask>,
-    archetypes_add_to_next: Vec<HashMap<ComponentIndex, usize>>,
-    archetypes_remove_to_next: Vec<HashMap<ComponentIndex, usize>>,
+    archetypes_add_to_next: Vec<HashMap<usize, usize>>,
+    archetypes_remove_to_next: Vec<HashMap<usize, usize>>,
 }
 
 impl Entities {
@@ -81,12 +83,12 @@ impl Entities {
     }
 
     pub fn is_alive(&self, entity: Entity) -> bool {
-        self.entities.contains(entity)
+        self.entity_to_index.contains_key(&entity)
     }
 
     pub fn iter(&self) -> EntitiesIter {
         EntitiesIter {
-            inner: self.entities.iter(),
+            inner: self.archetypes_entities.iter().flatten(),
         }
     }
 }
@@ -100,9 +102,8 @@ pub struct EntityCreator<'r> {
 impl EntityCreator<'_> {
     pub fn with<C: Component>(&mut self, c: C) -> &mut Self {
         self.world.insert_components::<C>();
-        let components = WriteComponents::<C>::fetch(self.world);
-        components..insert(self.entity, c);
-
+        let mut components = WriteComponents::<C>::fetch(self.world);
+        components.insert(self.entity, c);
         self
     }
     pub fn create(&mut self) -> Entity {
@@ -131,7 +132,7 @@ impl World {
 }
 
 pub struct EntitiesIter<'e> {
-    inner: SparseSetEntityIter<'e>,
+    inner: Flatten<Iter<'e, Vec<Entity>>>,
 }
 
 impl<'e> Iterator for EntitiesIter<'e> {

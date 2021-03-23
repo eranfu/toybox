@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
-use std::ops::{Deref, DerefMut, Index, Not};
+use std::ops::Not;
 
+use crate::{Entity, SystemData, World};
 use crate::component::storage::ComponentStorage;
-use crate::entity::{Entities, EntitiesIter};
+use crate::entity::Entities;
 use crate::join::Join;
 use crate::system::data::{access_order, AccessOrder};
 use crate::world::ResourceId;
-use crate::{Entity, SystemData, World};
 
 mod anti_components;
 mod registry;
@@ -27,6 +27,12 @@ pub struct Components<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
     entities: &'r Entities,
     storage: S,
     _phantom: PhantomData<(C, A)>,
+}
+
+impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Components<'r, S, C, A> {
+    pub(crate) fn insert(&mut self, entity: Entity, component: C) {
+        self.entities.
+    }
 }
 
 pub trait Storage {
@@ -130,28 +136,6 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
     }
 }
 
-impl<'r, C: Component, A: AccessOrder> Deref for ReadComponents<'r, C, A> {
-    type Target = ComponentStorage<C>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.storage
-    }
-}
-
-impl<'r, C: Component> Deref for WriteComponents<'r, C> {
-    type Target = ComponentStorage<C>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.storage
-    }
-}
-
-impl<'r, C: Component> DerefMut for WriteComponents<'r, C> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.storage
-    }
-}
-
 impl<'r, C: Component, A: AccessOrder> ReadComponents<'r, C, A> {
     fn new(world: &'r World) -> Self {
         Self {
@@ -231,8 +215,8 @@ impl World {
 mod tests {
     use tb_ecs_macro::*;
 
-    use crate::component::storage::ComponentStorage;
     use crate::*;
+    use crate::component::storage::ComponentStorage;
 
     #[component]
     struct Component1 {

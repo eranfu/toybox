@@ -1,10 +1,12 @@
-use crate::scheduler::Runnable;
-use crate::world::ResourceId;
-use crate::*;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::lazy::SyncOnceCell;
+
 use tb_core::algorithm::topological_sort::VisitorWithFlag;
+
+use crate::scheduler::Runnable;
+use crate::world::ResourceId;
+use crate::*;
 
 pub struct SystemRegistry {
     systems: Vec<&'static SystemInfo>,
@@ -75,6 +77,12 @@ impl SystemRegistry {
                         .for_each(|read_after_write_system| {
                             graph.add_dependency(read_after_write_system, system_info);
                         });
+                    write_resource_info
+                        .write_systems
+                        .iter()
+                        .for_each(|write_system| {
+                            graph.add_dependency_if_non_inverse(write_system, system_info);
+                        })
                 });
             });
 
