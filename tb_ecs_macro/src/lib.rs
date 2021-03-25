@@ -1,4 +1,5 @@
 use proc_macro::TokenStream;
+
 use quote::*;
 use syn::*;
 
@@ -77,6 +78,10 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
         impl Component for #component_name {}
 
         #impl_component_with_entity_ref
+
+        inventory::submit! {
+            ComponentInfo::new::<#component_name>()
+        }
     };
 
     output.into()

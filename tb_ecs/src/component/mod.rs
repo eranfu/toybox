@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 use std::ops::Not;
 
+pub use registry::ComponentInfo;
+
 use crate::component::storage::ComponentStorage;
 use crate::join::Join;
 use crate::system::data::{access_order, AccessOrder};

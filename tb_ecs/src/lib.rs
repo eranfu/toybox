@@ -1,4 +1,5 @@
 #![feature(once_cell)]
+#![feature(maybe_uninit_extra)]
 
 pub use inventory;
 
