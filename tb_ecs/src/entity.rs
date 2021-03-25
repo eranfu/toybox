@@ -6,6 +6,7 @@ use std::slice::Iter;
 
 use bit_set::BitSet;
 
+use crate::component::registry::ComponentRegistry;
 use crate::{Component, SystemData, World, WriteComponents};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
@@ -35,6 +36,13 @@ pub struct Entities {
 }
 
 impl Entities {
+    pub(crate) fn insert<C: Component>(&self, entity: Entity) {
+        if let Some(&(archetype, index_in_archetype)) = self.entity_to_index.get(&entity) {
+            self.archetypes_add_to_next[archetype]
+                .entry(ComponentRegistry::get_component_index::<C>());
+        }
+    }
+
     pub(crate) fn len(&self) -> usize {
         self.len
     }

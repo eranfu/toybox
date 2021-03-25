@@ -1,15 +1,14 @@
 use std::marker::PhantomData;
 use std::ops::Not;
 
-use crate::{Entity, SystemData, World};
 use crate::component::storage::ComponentStorage;
-use crate::entity::Entities;
 use crate::join::Join;
 use crate::system::data::{access_order, AccessOrder};
 use crate::world::ResourceId;
+use crate::{Entities, Entity, SystemData, World};
 
 mod anti_components;
-mod registry;
+pub(crate) mod registry;
 mod storage;
 
 pub trait Component: 'static + Sized + Clone {}
@@ -31,7 +30,7 @@ pub struct Components<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
 
 impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Components<'r, S, C, A> {
     pub(crate) fn insert(&mut self, entity: Entity, component: C) {
-        self.entities.
+        self.entities.insert::<C>(entity);
     }
 }
 
@@ -215,8 +214,8 @@ impl World {
 mod tests {
     use tb_ecs_macro::*;
 
-    use crate::*;
     use crate::component::storage::ComponentStorage;
+    use crate::*;
 
     #[component]
     struct Component1 {

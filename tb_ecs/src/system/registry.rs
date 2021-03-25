@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::lazy::SyncOnceCell;
+use std::lazy::{SyncLazy, SyncOnceCell};
 
 use tb_core::algorithm::topological_sort::VisitorWithFlag;
 
@@ -17,8 +17,7 @@ pub struct SystemRegistry {
 
 impl SystemRegistry {
     pub fn get_instance() -> &'static SystemRegistry {
-        static SYSTEM_REGISTRY: SyncOnceCell<SystemRegistry> = SyncOnceCell::new();
-        SYSTEM_REGISTRY.get_or_init(|| {
+        static SYSTEM_REGISTRY: SyncLazy<SystemRegistry> = SyncLazy::new(|| {
             let mut registry = SystemRegistry {
                 systems: Default::default(),
                 resources_info: Default::default(),
@@ -87,7 +86,8 @@ impl SystemRegistry {
             });
 
             registry
-        })
+        });
+        &*SYSTEM_REGISTRY
     }
 
     pub fn systems() -> VisitorWithFlag<'static, &'static SystemInfo, usize> {
