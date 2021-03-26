@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
-use std::lazy::{SyncLazy, SyncOnceCell};
+use std::lazy::SyncLazy;
 
 use tb_core::algorithm::topological_sort::VisitorWithFlag;
 

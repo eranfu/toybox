@@ -1,6 +1,4 @@
-use crate::join::ElementFetcher;
-use crate::system::data::AccessOrder;
-use crate::{Component, Components, Entity, Join, Storage};
+use crate::*;
 
 pub struct AntiComponents<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
     components: &'r Components<'r, S, C, A>,
@@ -14,6 +12,18 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> AntiComponents<'r, S, C,
 
 impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Join<'r> for AntiComponents<'r, S, C, A> {
     type ElementFetcher = AntiComponentsFetch<'r, S, C, A>;
+
+    fn open(mut self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
+        (
+            Box::new(
+                self.components
+                    .entities
+                    .iter()
+                    .filter(|entity| self.components.storage.contains(entity)),
+            ),
+            self.elem_fetcher(),
+        )
+    }
 
     fn len(&self) -> usize {
         self.components.entities.len() - self.components.storage.len()

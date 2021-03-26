@@ -1,7 +1,8 @@
-use crate::system::data::SystemData;
+pub use data::*;
+pub use registry::*;
 
-pub(crate) mod data;
-pub(crate) mod registry;
+mod data;
+mod registry;
 
 pub trait System<'r> {
     type SystemData: SystemData<'r>;

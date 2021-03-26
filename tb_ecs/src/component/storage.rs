@@ -1,17 +1,21 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 
-use crate::{join, Entity};
+use crate::{join, Component, Entity};
 
-pub struct ComponentStorage<T> {
+pub struct ComponentStorage<T: Component> {
     data: Vec<T>,
     entities: Vec<Entity>,
     entity_to_index: EntityToIndex,
 }
 
-impl<T> ComponentStorage<T> {
-    pub fn contains(&self, entity: Entity) -> bool {
-        self.entity_to_index.contains(&entity)
+impl<T: Component> ComponentStorage<T> {
+    pub(crate) fn entity_iter(&self) -> Box<dyn '_ + Iterator<Item = Entity>> {
+        Box::new(self.entities.iter().map(|entity| *entity))
+    }
+
+    pub fn contains(&self, entity: &Entity) -> bool {
+        self.entity_to_index.contains(entity)
     }
     pub fn len(&self) -> usize {
         self.data.len()
@@ -43,7 +47,7 @@ impl<T> ComponentStorage<T> {
     }
 }
 
-impl<T> Default for ComponentStorage<T> {
+impl<T: Component> Default for ComponentStorage<T> {
     fn default() -> Self {
         Self {
             data: Default::default(),
@@ -53,7 +57,7 @@ impl<T> Default for ComponentStorage<T> {
     }
 }
 
-impl<'s, T> join::ElementFetcher for &'s ComponentStorage<T> {
+impl<'s, T: Component> join::ElementFetcher for &'s ComponentStorage<T> {
     type Element = &'s T;
 
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {
@@ -63,7 +67,7 @@ impl<'s, T> join::ElementFetcher for &'s ComponentStorage<T> {
     }
 }
 
-impl<'s, T> join::ElementFetcher for &'s mut ComponentStorage<T> {
+impl<'s, T: Component> join::ElementFetcher for &'s mut ComponentStorage<T> {
     type Element = &'s mut T;
 
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {

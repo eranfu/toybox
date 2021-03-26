@@ -1,12 +1,13 @@
-use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::Flatten;
+use std::ops::{Deref, Index, IndexMut};
 use std::slice::Iter;
+use std::sync::RwLock;
 
 use bit_set::BitSet;
 
-use crate::component::registry::ComponentRegistry;
+use crate::registry::{ComponentIndex, ComponentRegistry};
 use crate::{Component, SystemData, World, WriteComponents};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
@@ -23,25 +24,90 @@ impl Entity {
 #[derive(Eq, PartialEq, Clone, Default, Hash)]
 struct ComponentMask(BitSet<usize>);
 
-#[derive(Default)]
-pub struct Entities {
-    next_id: u64,
-    len: usize,
-    entity_to_index: HashMap<Entity, (usize, usize)>,
-    component_mask_to_archetype_index: HashMap<ComponentMask, usize>,
-    archetypes_entities: Vec<Vec<Entity>>,
-    archetypes_component_mask: Vec<ComponentMask>,
-    archetypes_add_to_next: Vec<HashMap<usize, usize>>,
-    archetypes_remove_to_next: Vec<HashMap<usize, usize>>,
+impl Deref for ComponentMask {
+    type Target = BitSet<usize>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
 }
 
-impl Entities {
-    pub(crate) fn insert<C: Component>(&self, entity: Entity) {
-        if let Some(&(archetype, index_in_archetype)) = self.entity_to_index.get(&entity) {
-            self.archetypes_add_to_next[archetype]
-                .entry(ComponentRegistry::get_component_index::<C>());
+#[derive(Default)]
+pub struct Entities {
+    inner: RwLock<EntitiesInner>,
+}
+
+#[derive(Default)]
+struct EntitiesInner {
+    next_id: u64,
+    len: usize,
+    entity_to_index: HashMap<Entity, EntityIndex>,
+    component_mask_to_archetype_index: HashMap<ComponentMask, ArchetypeIndex>,
+    archetypes_entities: Vec<Vec<Entity>>,
+    archetypes_component_mask: Vec<ComponentMask>,
+    archetypes_add_to_next: Vec<HashMap<ComponentIndex, ArchetypeIndex>>,
+    archetypes_remove_to_next: Vec<HashMap<ComponentIndex, ArchetypeIndex>>,
+}
+
+impl EntitiesInner {
+    pub fn is_alive(&self, entity: Entity) -> bool {
+        self.entity_to_index.contains_key(&entity)
+    }
+
+    pub fn iter(&self) -> EntitiesIter {
+        EntitiesIter {
+            inner: self.archetypes_entities.iter().flatten(),
         }
     }
+    pub fn kill(&mut self, world: &mut World, entity: Entity) {
+        let entity_index = match self.entity_to_index.remove(&entity) {
+            Some(entity_index) => entity_index,
+            None => {
+                return;
+            }
+        };
+
+        let entities = &mut self.archetypes_entities[entity_index.archetype];
+        let last = *entities.last().unwrap();
+        entities.swap_remove(entity_index.index_in_archetype);
+        if last != entity {
+            self.entity_to_index.insert(last, entity_index);
+        }
+
+        for component_index in self.archetypes_component_mask[entity_index.archetype].iter() {
+            ComponentRegistry::remove_from_world(component_index.into(), world, entity)
+        }
+    }
+
+    pub(crate) fn on_component_inserted<C: Component>(&self, entity: &Entity) {
+        let component_index = ComponentIndex::get::<C>();
+        self.on_component_inserted_inner(entity, component_index);
+    }
+
+    fn on_component_inserted_inner(&self, entity: &Entity, component_index: ComponentIndex) {
+        let entity_index = match self.entity_to_index.get(entity).map(|e| *e) {
+            Some(index) => index,
+            None => {
+                return;
+            }
+        };
+
+        let next_archetype = self.archetypes_add_to_next[entity_index.archetype]
+            .get(&component_index)
+            .map(|a| *a);
+        let next_archetype = next_archetype.unwrap_or_else(|| {
+            let mut next_mask = self.archetypes_component_mask[entity_index.archetype].clone();
+            next_mask.insert(*component_index);
+            let next_archetype = self.get_or_insert_archetype(next_mask);
+            self.archetypes_add_to_next[entity_index.archetype]
+                .insert(component_index, next_archetype);
+            next_archetype
+        });
+
+        self.transfer(entity_index, next_archetype);
+    }
+
+    fn transfer(&self, from: EntityIndex, to: ArchetypeIndex) {}
 
     pub(crate) fn len(&self) -> usize {
         self.len
@@ -53,52 +119,124 @@ impl Entities {
         let entity = Entity { id };
         let archetype = self.get_or_insert_archetype(ComponentMask::default());
         self.entity_to_index
-            .insert(entity, (archetype, self.push_entity(archetype, entity)));
+            .insert(entity, self.push_entity(archetype, entity));
         self.len += 1;
         entity
     }
 
-    ///
-    /// # return
-    /// entity index in archetype
-    fn push_entity(&mut self, archetype: usize, entity: Entity) -> usize {
+    fn push_entity(&mut self, archetype: ArchetypeIndex, entity: Entity) -> EntityIndex {
         let entities = &mut self.archetypes_entities[archetype];
-        let entity_index = entities.len();
+        let index_in_archetype = entities.len();
         entities.push(entity);
-        entity_index
+        EntityIndex::new(archetype, index_in_archetype)
     }
 
-    fn get_or_insert_archetype(&mut self, mask: ComponentMask) -> usize {
+    fn get_or_insert_archetype(&self, mask: ComponentMask) -> ArchetypeIndex {
         match self.component_mask_to_archetype_index.entry(mask) {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {
-                let archetype = self.archetypes_component_mask.len();
+                let mut archetypes_component_mask = self.archetypes_component_mask.write().unwrap();
+                let archetype = ArchetypeIndex(archetypes_component_mask.len());
+                archetypes_component_mask.push(vacant.key().clone());
+                drop(archetypes_component_mask);
+
                 vacant.insert(archetype);
-                self.archetypes_component_mask.push(vacant.key().clone());
-                self.archetypes_entities.push(Default::default());
-                self.archetypes_add_to_next.push(Default::default());
-                self.archetypes_remove_to_next.push(Default::default());
+                drop(vacant);
+
+                self.archetypes_entities
+                    .write()
+                    .unwrap()
+                    .push(Default::default());
+                self.archetypes_add_to_next
+                    .write()
+                    .unwrap()
+                    .push(Default::default());
+                self.archetypes_remove_to_next
+                    .write()
+                    .unwrap()
+                    .push(Default::default());
                 archetype
             }
         }
     }
+}
 
-    pub fn kill(&mut self, entity: Entity) {
-        if let Some(&(archetype, entity_index)) = self.entity_to_index.get(&entity) {
-            self.archetypes_entities[archetype].swap_remove(entity_index);
-            for component_index in self.archetypes_component_mask[archetype].0.iter() {}
+#[derive(Copy, Clone)]
+struct EntityIndex {
+    archetype: ArchetypeIndex,
+    index_in_archetype: usize,
+}
+
+impl EntityIndex {
+    fn new(archetype: ArchetypeIndex, index_in_archetype: usize) -> EntityIndex {
+        Self {
+            archetype,
+            index_in_archetype,
         }
     }
+}
 
-    pub fn is_alive(&self, entity: Entity) -> bool {
-        self.entity_to_index.contains_key(&entity)
-    }
+impl Index<EntityIndex> for Vec<Vec<Entity>> {
+    type Output = Entity;
 
-    pub fn iter(&self) -> EntitiesIter {
-        EntitiesIter {
-            inner: self.archetypes_entities.iter().flatten(),
-        }
+    fn index(&self, index: EntityIndex) -> &Self::Output {
+        &self[index.archetype][index.index_in_archetype]
     }
+}
+
+impl IndexMut<EntityIndex> for Vec<Vec<Entity>> {
+    fn index_mut(&mut self, index: EntityIndex) -> &mut Self::Output {
+        &mut self[index.archetype][index.index_in_archetype]
+    }
+}
+
+#[derive(Copy, Clone)]
+struct ArchetypeIndex(usize);
+
+impl Index<ArchetypeIndex> for Vec<Vec<Entity>> {
+    type Output = Vec<Entity>;
+
+    fn index(&self, index: ArchetypeIndex) -> &Self::Output {
+        &self[index.0]
+    }
+}
+
+impl IndexMut<ArchetypeIndex> for Vec<Vec<Entity>> {
+    fn index_mut(&mut self, index: ArchetypeIndex) -> &mut Self::Output {
+        &mut self[index.0]
+    }
+}
+
+impl Index<ArchetypeIndex> for Vec<ComponentMask> {
+    type Output = ComponentMask;
+
+    fn index(&self, index: ArchetypeIndex) -> &Self::Output {
+        &self[index.0]
+    }
+}
+
+impl IndexMut<ArchetypeIndex> for Vec<ComponentMask> {
+    fn index_mut(&mut self, index: ArchetypeIndex) -> &mut Self::Output {
+        &mut self[index.0]
+    }
+}
+
+impl Index<ArchetypeIndex> for Vec<HashMap<ComponentIndex, ArchetypeIndex>> {
+    type Output = HashMap<ComponentIndex, ArchetypeIndex>;
+
+    fn index(&self, index: ArchetypeIndex) -> &Self::Output {
+        &self[index.0]
+    }
+}
+
+impl IndexMut<ArchetypeIndex> for Vec<HashMap<ComponentIndex, ArchetypeIndex>> {
+    fn index_mut(&mut self, index: ArchetypeIndex) -> &mut Self::Output {
+        &mut self[index.0]
+    }
+}
+
+struct NewArchetypeBackBuffer {
+    cur: Vec<ArchetypeIndex>,
 }
 
 pub struct EntityCreator<'r> {
@@ -123,7 +261,7 @@ impl EntityCreator<'_> {
 impl Drop for EntityCreator<'_> {
     fn drop(&mut self) {
         if !self.created {
-            self.world.fetch_mut::<Entities>().kill(self.entity);
+            self.world.fetch::<Entities>().kill(self.entity);
         }
     }
 }
@@ -147,7 +285,7 @@ impl<'e> Iterator for EntitiesIter<'e> {
     type Item = Entity;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next()
+        self.inner.next().map(|entity| *entity)
     }
 }
 

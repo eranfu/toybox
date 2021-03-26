@@ -55,12 +55,6 @@ macro_rules! impl_join_tuple {
                 +;
                 Some(($j0, $($j1), +))
             }
-
-            #[allow(non_snake_case)]
-            fn contains(&self, entity: Entity) -> bool {
-                let ($j0, $($j1), +) = self;
-                $j0.contains(entity) && $($j1.contains(entity)) && +
-            }
         }
 
         impl<'j, $j0: Join<'j>, $($j1: Join<'j>), +> Join<'j> for ($j0, $($j1), +) {

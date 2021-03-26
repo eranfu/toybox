@@ -2,12 +2,18 @@ use std::any::TypeId;
 use std::collections::HashMap;
 use std::lazy::SyncLazy;
 use std::marker::PhantomData;
-use std::ops::Index;
+use std::ops::{Deref, Index};
 
 use crate::{Component, Entity, World};
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Default, Copy, Clone, Eq, PartialEq, Debug, Hash)]
 pub struct ComponentIndex(usize);
+
+impl From<usize> for ComponentIndex {
+    fn from(from: usize) -> Self {
+        ComponentIndex(from)
+    }
+}
 
 impl ComponentIndex {
     pub fn get<C: Component>() -> Self {
@@ -19,11 +25,19 @@ impl ComponentIndex {
     }
 }
 
-impl Index<ComponentIndex> for [ComponentInfo] {
+impl Deref for ComponentIndex {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl Index<ComponentIndex> for Vec<&ComponentInfo> {
     type Output = ComponentInfo;
 
     fn index(&self, index: ComponentIndex) -> &Self::Output {
-        &self[index.0]
+        self[index.0]
     }
 }
 
@@ -42,6 +56,17 @@ pub struct ComponentRegistry {
 }
 
 impl ComponentRegistry {
+    pub(crate) fn remove_from_world(
+        component_index: ComponentIndex,
+        world: &World,
+        entity: Entity,
+    ) {
+        let instance = Self::get_instance();
+        instance.infos[component_index]
+            .operation
+            .remove_from_world(world, entity)
+    }
+
     fn get_instance() -> &'static ComponentRegistry {
         static INSTANCE: SyncLazy<ComponentRegistry> = SyncLazy::new(|| {
             let mut instance = ComponentRegistry {
@@ -62,7 +87,7 @@ impl ComponentRegistry {
 }
 
 pub trait ComponentOperation {
-    fn remove_from_world(&self, world: &mut World, entity: Entity);
+    fn remove_from_world(&self, world: &World, entity: Entity);
 }
 
 struct Operation<C: Component> {
@@ -70,7 +95,7 @@ struct Operation<C: Component> {
 }
 
 impl<C: Component> ComponentOperation for Operation<C> {
-    fn remove_from_world(&self, world: &mut World, entity: Entity) {
+    fn remove_from_world(&self, world: &World, entity: Entity) {
         let components = world.fetch_components_mut::<C>();
         components.remove(entity)
     }
