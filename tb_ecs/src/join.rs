@@ -4,12 +4,13 @@ pub trait Join<'j>: Sized {
     type ElementFetcher: ElementFetcher;
 
     fn join(self) -> JoinIterator<'j, Self> {
-        let (entity_iter, fetch_elem) = self.open();
+        let (entity_iter, elem_fetcher) = self.open();
         JoinIterator {
             entity_iter,
-            fetch_elem,
+            elem_fetcher,
         }
     }
+    fn open(self) -> (Box<dyn 'j + Iterator<Item = Entity>>, Self::ElementFetcher);
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -23,16 +24,18 @@ pub trait ElementFetcher {
 }
 
 pub struct JoinIterator<'j, J: Join<'j>> {
-    entity_iter: Box<dyn Iterator<Item = Entity> + 'j>,
-    fetch_elem: J::ElementFetcher,
+    entity_iter: Box<dyn 'j + Iterator<Item = Entity>>,
+    elem_fetcher: J::ElementFetcher,
 }
 
 impl<'j, J: Join<'j>> Iterator for JoinIterator<'j, J> {
     type Item = <<J as Join<'j>>::ElementFetcher as ElementFetcher>::Element;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let fetch = &mut self.fetch_elem;
-        self.entity_iter.find_map(|entity| fetch.fetch_elem(entity))
+        let fetch = &mut self.elem_fetcher;
+        self.entity_iter
+            .next()
+            .map(|entity| fetch.fetch_elem(entity).unwrap())
     }
 }
 
