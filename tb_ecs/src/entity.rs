@@ -54,7 +54,7 @@ impl Entities {
     pub(crate) fn iter(&self) -> EntitiesIter<'_> {
         EntitiesIter::new(self.read())
     }
-    pub(crate) fn is_alive(&self, entity: Entity) -> bool {
+    pub fn is_alive(&self, entity: Entity) -> bool {
         self.read().is_alive(entity)
     }
     pub(crate) fn new_entity(&self) -> Entity {
@@ -121,8 +121,25 @@ impl EntitiesInner {
         }
     }
 
+    pub(crate) fn new_archetype_visitor(&self) -> ArchetypeVisitor {
+        ArchetypeVisitor {
+            cur_index: ArchetypeIndex(0),
+        }
+    }
+
+    pub(crate) fn visit_archetype(
+        &self,
+        visitor: &mut ArchetypeVisitor,
+        mut on_visit: impl FnMut(ArchetypeIndex),
+    ) {
+        while *visitor.cur_index < self.archetypes_entities.len() {
+            on_visit(visitor.cur_index);
+            *visitor.cur_index += 1;
+        }
+    }
+
     fn on_component_inserted(&mut self, entity: Entity, component_index: ComponentIndex) {
-        let entity_index = match self.entity_to_index.get(&entity).map(|e| *e) {
+        let entity_index = match self.entity_to_index.get(&entity).copied() {
             Some(index) => index,
             None => {
                 return;
@@ -131,7 +148,7 @@ impl EntitiesInner {
 
         let next_archetype = self.archetypes_add_to_next[entity_index.archetype]
             .get(&component_index)
-            .map(|a| *a);
+            .copied();
         let next_archetype = next_archetype.unwrap_or_else(|| {
             let mut next_mask = self.archetypes_component_mask[entity_index.archetype].clone();
             next_mask.insert(*component_index);
@@ -193,6 +210,10 @@ impl EntitiesInner {
     }
 }
 
+pub(crate) struct ArchetypeVisitor {
+    cur_index: ArchetypeIndex,
+}
+
 #[derive(Copy, Clone)]
 struct EntityIndex {
     archetype: ArchetypeIndex,
@@ -224,6 +245,20 @@ impl IndexMut<EntityIndex> for Vec<Vec<Entity>> {
 
 #[derive(Copy, Clone)]
 struct ArchetypeIndex(usize);
+
+impl Deref for ArchetypeIndex {
+    type Target = usize;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl DerefMut for ArchetypeIndex {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
 
 impl Index<ArchetypeIndex> for Vec<Vec<Entity>> {
     type Output = Vec<Entity>;
@@ -267,10 +302,6 @@ impl IndexMut<ArchetypeIndex> for Vec<HashMap<ComponentIndex, ArchetypeIndex>> {
     }
 }
 
-struct NewArchetypeBackBuffer {
-    cur: Vec<ArchetypeIndex>,
-}
-
 pub struct EntityCreator<'r> {
     created: bool,
     entity: Entity,
@@ -310,14 +341,17 @@ impl World {
 }
 
 pub struct EntitiesIter<'e> {
-    guard: RwLockReadGuard<'e, EntitiesInner>,
+    _guard: RwLockReadGuard<'e, EntitiesInner>,
     inner: Flatten<Iter<'e, Vec<Entity>>>,
 }
 
 impl<'e> EntitiesIter<'e> {
     fn new(guard: RwLockReadGuard<EntitiesInner>) -> EntitiesIter {
         let inner = unsafe { std::mem::transmute(guard.iter()) };
-        EntitiesIter { guard, inner }
+        EntitiesIter {
+            _guard: guard,
+            inner,
+        }
     }
 }
 
@@ -325,7 +359,7 @@ impl<'e> Iterator for EntitiesIter<'e> {
     type Item = Entity;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().map(|entity| *entity)
+        self.inner.next().copied()
     }
 }
 
