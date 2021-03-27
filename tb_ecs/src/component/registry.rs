@@ -58,7 +58,7 @@ pub struct ComponentRegistry {
 impl ComponentRegistry {
     pub(crate) fn remove_from_world(
         component_index: ComponentIndex,
-        world: &World,
+        world: &mut World,
         entity: Entity,
     ) {
         let instance = Self::get_instance();
@@ -107,7 +107,7 @@ pub struct ComponentInfo {
 }
 
 impl ComponentInfo {
-    fn new<C: Component>() -> Self {
+    pub fn new<C: Component>() -> Self {
         Self {
             type_id: ComponentTypeId::new::<C>(),
             operation: Box::new(Operation::<C> {

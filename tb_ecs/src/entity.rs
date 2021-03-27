@@ -1,9 +1,10 @@
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::Flatten;
 use std::ops::{Deref, Index, IndexMut};
 use std::slice::Iter;
-use std::sync::RwLock;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bit_set::BitSet;
 
@@ -37,6 +38,43 @@ pub struct Entities {
     inner: RwLock<EntitiesInner>,
 }
 
+impl Entities {
+    pub(crate) fn len(&self) -> usize {
+        self.read().len()
+    }
+    pub(crate) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    pub(crate) fn iter(&self) -> EntitiesIter<'_> {
+        self.read().iter()
+    }
+    pub(crate) fn is_alive(&self, entity: Entity) -> bool {
+        self.read().is_alive(entity)
+    }
+    pub(crate) fn new_entity(&self) -> Entity {
+        self.write().new_entity()
+    }
+    pub(crate) fn kill(&self, world: &mut World, entity: Entity) {
+        self.write().kill(world, entity)
+    }
+    fn read(&self) -> RwLockReadGuard<'_, EntitiesInner> {
+        self.inner.read().unwrap()
+    }
+    fn write(&self) -> RwLockWriteGuard<'_, EntitiesInner> {
+        self.inner.write().unwrap()
+    }
+}
+
+impl Entities {
+    pub(crate) fn on_component_inserted<C: Component>(&mut self, entity: Entity) {
+        let component_index = ComponentIndex::get::<C>();
+        self.inner
+            .write()
+            .unwrap()
+            .on_component_inserted(entity, component_index);
+    }
+}
+
 #[derive(Default)]
 struct EntitiesInner {
     next_id: u64,
@@ -54,7 +92,7 @@ impl EntitiesInner {
         self.entity_to_index.contains_key(&entity)
     }
 
-    pub fn iter(&self) -> EntitiesIter {
+    pub fn iter(&self) -> EntitiesIter<'_> {
         EntitiesIter {
             inner: self.archetypes_entities.iter().flatten(),
         }
@@ -79,13 +117,8 @@ impl EntitiesInner {
         }
     }
 
-    pub(crate) fn on_component_inserted<C: Component>(&self, entity: &Entity) {
-        let component_index = ComponentIndex::get::<C>();
-        self.on_component_inserted_inner(entity, component_index);
-    }
-
-    fn on_component_inserted_inner(&self, entity: &Entity, component_index: ComponentIndex) {
-        let entity_index = match self.entity_to_index.get(entity).map(|e| *e) {
+    fn on_component_inserted(&mut self, entity: Entity, component_index: ComponentIndex) {
+        let entity_index = match self.entity_to_index.get(&entity).map(|e| *e) {
             Some(index) => index,
             None => {
                 return;
@@ -104,10 +137,19 @@ impl EntitiesInner {
             next_archetype
         });
 
-        self.transfer(entity_index, next_archetype);
+        self.transfer(entity, entity_index, next_archetype);
     }
 
-    fn transfer(&self, from: EntityIndex, to: ArchetypeIndex) {}
+    fn transfer(&mut self, entity: Entity, from: EntityIndex, to: ArchetypeIndex) {
+        let from_entities = &mut self.archetypes_entities[from.archetype];
+        let from_last = *from_entities.last().unwrap();
+        from_entities.swap_remove(from.index_in_archetype);
+        if from_last != entity {
+            self.entity_to_index.insert(from_last, from);
+        }
+        self.entity_to_index
+            .insert(entity, self.push_entity(to, entity));
+    }
 
     pub(crate) fn len(&self) -> usize {
         self.len
@@ -131,30 +173,16 @@ impl EntitiesInner {
         EntityIndex::new(archetype, index_in_archetype)
     }
 
-    fn get_or_insert_archetype(&self, mask: ComponentMask) -> ArchetypeIndex {
+    fn get_or_insert_archetype(&mut self, mask: ComponentMask) -> ArchetypeIndex {
         match self.component_mask_to_archetype_index.entry(mask) {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {
-                let mut archetypes_component_mask = self.archetypes_component_mask.write().unwrap();
-                let archetype = ArchetypeIndex(archetypes_component_mask.len());
-                archetypes_component_mask.push(vacant.key().clone());
-                drop(archetypes_component_mask);
-
+                let archetype = ArchetypeIndex(self.archetypes_component_mask.len());
+                self.archetypes_component_mask.push(vacant.key().clone());
                 vacant.insert(archetype);
-                drop(vacant);
-
-                self.archetypes_entities
-                    .write()
-                    .unwrap()
-                    .push(Default::default());
-                self.archetypes_add_to_next
-                    .write()
-                    .unwrap()
-                    .push(Default::default());
-                self.archetypes_remove_to_next
-                    .write()
-                    .unwrap()
-                    .push(Default::default());
+                self.archetypes_entities.push(Default::default());
+                self.archetypes_add_to_next.push(Default::default());
+                self.archetypes_remove_to_next.push(Default::default());
                 archetype
             }
         }
@@ -261,7 +289,7 @@ impl EntityCreator<'_> {
 impl Drop for EntityCreator<'_> {
     fn drop(&mut self) {
         if !self.created {
-            self.world.fetch::<Entities>().kill(self.entity);
+            self.world.fetch::<Entities>().kill(self.world, self.entity);
         }
     }
 }
@@ -296,14 +324,15 @@ mod tests {
 
     #[test]
     fn entity_life() {
-        let mut entities = Entities::default();
+        let mut world = World::default();
+        let mut entities = world.insert(Entities::default);
         let entity0 = entities.new_entity();
         assert_eq!(entity0.id, 0);
         let entity1 = entities.new_entity();
         assert_eq!(entity1.id, 1);
         assert!(entities.is_alive(entity0));
         assert!(entities.is_alive(entity1));
-        entities.kill(entity0);
+        entities.kill(&mut world, entity0);
         assert!(!entities.is_alive(entity0));
         let entity0 = entities.new_entity();
         assert_eq!(entity0.id, 2);
@@ -318,6 +347,9 @@ mod tests {
         assert!(world.fetch::<Entities>().is_alive(entity));
         world.create_entity();
         let entities = world.fetch::<Entities>();
-        assert!(!entities.entities.contains(Entity { id: 1 }));
+        assert!(!entities
+            .read()
+            .entity_to_index
+            .contains_key(&Entity { id: 1 }));
     }
 }
