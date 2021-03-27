@@ -58,7 +58,7 @@ pub struct ComponentRegistry {
 impl ComponentRegistry {
     pub(crate) fn remove_from_world(
         component_index: ComponentIndex,
-        world: &mut World,
+        world: &World,
         entity: Entity,
     ) {
         let instance = Self::get_instance();
@@ -86,13 +86,17 @@ impl ComponentRegistry {
     }
 }
 
-pub trait ComponentOperation {
+pub trait ComponentOperation: Send + Sync {
     fn remove_from_world(&self, world: &World, entity: Entity);
 }
 
 struct Operation<C: Component> {
     _phantom: PhantomData<C>,
 }
+
+unsafe impl<C: Component> Send for Operation<C> {}
+
+unsafe impl<C: Component> Sync for Operation<C> {}
 
 impl<C: Component> ComponentOperation for Operation<C> {
     fn remove_from_world(&self, world: &World, entity: Entity) {
@@ -138,7 +142,7 @@ mod tests {
         let index_0 = ComponentIndex::get::<Component0>();
         let index_1 = ComponentIndex::get::<Component1>();
         for i in 0..1000 {
-            join_handles.push(thread::spawn(|| {
+            join_handles.push(thread::spawn(move || {
                 if i % 2 == 0 {
                     assert_eq!(ComponentIndex::get::<Component0>(), index_0);
                 } else {
@@ -146,7 +150,7 @@ mod tests {
                 }
             }))
         }
-        for join in &join_handles {
+        for join in join_handles {
             join.join().unwrap()
         }
     }

@@ -14,12 +14,13 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Join<'r> for AntiCompone
     type ElementFetcher = AntiComponentsFetch<'r, S, C, A>;
 
     fn open(mut self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
+        let storage = &self.components.storage;
         (
             Box::new(
                 self.components
                     .entities
                     .iter()
-                    .filter(|entity| self.components.storage.contains(entity)),
+                    .filter(move |&entity| !storage.contains(entity)),
             ),
             self.elem_fetcher(),
         )
@@ -49,6 +50,16 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> ElementFetcher
         None
     }
 }
+
+impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Clone for AntiComponentsFetch<'r, S, C, A> {
+    fn clone(&self) -> Self {
+        Self {
+            components: self.components,
+        }
+    }
+}
+
+impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Copy for AntiComponentsFetch<'r, S, C, A> {}
 
 #[cfg(test)]
 mod tests {

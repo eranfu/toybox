@@ -33,7 +33,7 @@ pub trait Storage {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    fn contains(&self, entity: &Entity) -> bool;
+    fn contains(&self, entity: Entity) -> bool;
 }
 
 pub type ReadComponents<'r, C, A> = Components<'r, &'r ComponentStorage<C>, C, A>;
@@ -47,7 +47,7 @@ impl<'r, C: Component> Storage for &'r ComponentStorage<C> {
         ComponentStorage::len(self)
     }
 
-    fn contains(&self, entity: &Entity) -> bool {
+    fn contains(&self, entity: Entity) -> bool {
         ComponentStorage::contains(self, entity)
     }
 }
@@ -57,7 +57,7 @@ impl<'r, C: Component> Storage for &'r mut ComponentStorage<C> {
         ComponentStorage::len(self)
     }
 
-    fn contains(&self, entity: &Entity) -> bool {
+    fn contains(&self, entity: Entity) -> bool {
         ComponentStorage::contains(self, entity)
     }
 }
@@ -107,7 +107,7 @@ impl<'r, C: Component> Not for &'r mut WriteComponents<'r, C> {
 impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComponents<'r, C, A> {
     type ElementFetcher = &'r ComponentStorage<C>;
 
-    fn open(self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
+    fn open(mut self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
         (self.storage.entity_iter(), self.elem_fetcher())
     }
 
@@ -124,7 +124,8 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
     type ElementFetcher = &'r mut ComponentStorage<C>;
 
     fn open(self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
-        (self.storage.entity_iter(), self.elem_fetcher())
+        let storage = unsafe { &mut *(&mut self.storage as *mut _ as *mut _) };
+        (self.storage.entity_iter(), storage)
     }
 
     fn len(&self) -> usize {

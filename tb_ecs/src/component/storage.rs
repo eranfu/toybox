@@ -14,7 +14,7 @@ impl<T: Component> ComponentStorage<T> {
         Box::new(self.entities.iter().map(|entity| *entity))
     }
 
-    pub fn contains(&self, entity: &Entity) -> bool {
+    pub fn contains(&self, entity: Entity) -> bool {
         self.entity_to_index.contains(entity)
     }
     pub fn len(&self) -> usize {
@@ -71,10 +71,11 @@ impl<'s, T: Component> join::ElementFetcher for &'s mut ComponentStorage<T> {
     type Element = &'s mut T;
 
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {
-        self.entity_to_index.get(&entity).map(|index| {
-            let s: &'s mut Self = unsafe { std::mem::transmute(self) };
-            &mut s.data[*index]
-        })
+        let s: &'s mut Self = unsafe { std::mem::transmute(self) };
+        let data = &mut s.data;
+        s.entity_to_index
+            .get(&entity)
+            .map(move |&index| &mut data[index])
     }
 }
 
@@ -84,8 +85,8 @@ struct EntityToIndex {
 }
 
 impl EntityToIndex {
-    pub(crate) fn contains(&self, entity: &Entity) -> bool {
-        self.entity_to_index.contains_key(entity)
+    pub(crate) fn contains(&self, entity: Entity) -> bool {
+        self.entity_to_index.contains_key(&entity)
     }
     pub(crate) fn get(&self, entity: &Entity) -> Option<&usize> {
         self.entity_to_index.get(entity)
