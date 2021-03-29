@@ -31,7 +31,7 @@ where
         let storage = world.fetch_components_mut::<C>();
         let entities = world.fetch_mut::<Entities>();
         let (entity, mut component) = self.open();
-        entity.for_each(|e| {
+        entity.for_each(|&e| {
             storage.insert(
                 link.build_link(e, entities),
                 component.fetch_elem(e).unwrap().clone(),
@@ -49,7 +49,7 @@ where
         let storage = world.fetch_components_mut::<C>();
         let entities = world.fetch_mut::<Entities>();
         let (entity, mut components) = self.open();
-        entity.for_each(|e| {
+        entity.for_each(|&e| {
             let mut component: C = components.fetch_elem(e).unwrap().clone();
             let mut entity_ref = component.get_entity_ref();
             ConvertToWorld::convert_to_world(&mut entity_ref, link, entities);

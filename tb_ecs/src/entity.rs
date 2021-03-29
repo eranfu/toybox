@@ -8,8 +8,8 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bit_set::BitSet;
 
-use crate::{Component, SystemData, World, WriteComponents};
 use crate::registry::{ComponentIndex, ComponentRegistry};
+use crate::{Component, SystemData, World, WriteComponents};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Entity {
@@ -23,7 +23,7 @@ impl Entity {
 }
 
 #[derive(Eq, PartialEq, Clone, Default, Hash)]
-struct ComponentMask(BitSet<usize>);
+pub(crate) struct ComponentMask(BitSet<usize>);
 
 impl Deref for ComponentMask {
     type Target = BitSet<usize>;
@@ -57,13 +57,13 @@ impl Entities {
     pub fn is_alive(&self, entity: Entity) -> bool {
         self.read().is_alive(entity)
     }
-    pub(crate) fn new_entity(&self) -> Entity {
+    pub fn new_entity(&self) -> Entity {
         self.write().new_entity()
     }
     pub(crate) fn kill(&self, world: &World, entity: Entity) {
         self.write().kill(world, entity)
     }
-    fn read(&self) -> RwLockReadGuard<'_, EntitiesInner> {
+    pub(crate) fn read(&self) -> RwLockReadGuard<'_, EntitiesInner> {
         self.inner.read().unwrap()
     }
     fn write(&self) -> RwLockWriteGuard<'_, EntitiesInner> {
@@ -82,13 +82,13 @@ impl Entities {
 }
 
 #[derive(Default)]
-struct EntitiesInner {
+pub(crate) struct EntitiesInner {
     next_id: u64,
     len: usize,
     entity_to_index: HashMap<Entity, EntityIndex>,
     component_mask_to_archetype_index: HashMap<ComponentMask, ArchetypeIndex>,
-    archetypes_entities: Vec<Vec<Entity>>,
-    archetypes_component_mask: Vec<ComponentMask>,
+    pub(crate) archetypes_entities: Vec<Vec<Entity>>,
+    pub(crate) archetypes_component_mask: Vec<ComponentMask>,
     archetypes_add_to_next: Vec<HashMap<ComponentIndex, ArchetypeIndex>>,
     archetypes_remove_to_next: Vec<HashMap<ComponentIndex, ArchetypeIndex>>,
 }
@@ -121,19 +121,16 @@ impl EntitiesInner {
         }
     }
 
-    pub(crate) fn new_archetype_visitor(&self) -> ArchetypeVisitor {
-        ArchetypeVisitor {
-            cur_index: ArchetypeIndex(0),
-        }
-    }
-
     pub(crate) fn visit_archetype(
         &self,
         visitor: &mut ArchetypeVisitor,
-        mut on_visit: impl FnMut(ArchetypeIndex),
+        mut on_visit: impl FnMut(ArchetypeIndex, &ComponentMask),
     ) {
-        while *visitor.cur_index < self.archetypes_entities.len() {
-            on_visit(visitor.cur_index);
+        while *visitor.cur_index < self.archetypes_component_mask.len() {
+            on_visit(
+                visitor.cur_index,
+                &self.archetypes_component_mask[visitor.cur_index],
+            );
             *visitor.cur_index += 1;
         }
     }
@@ -211,7 +208,7 @@ impl EntitiesInner {
 }
 
 pub(crate) struct ArchetypeVisitor {
-    cur_index: ArchetypeIndex,
+    pub(crate) cur_index: ArchetypeIndex,
 }
 
 #[derive(Copy, Clone)]
@@ -244,7 +241,7 @@ impl IndexMut<EntityIndex> for Vec<Vec<Entity>> {
 }
 
 #[derive(Copy, Clone)]
-struct ArchetypeIndex(usize);
+pub(crate) struct ArchetypeIndex(pub(crate) usize);
 
 impl Deref for ArchetypeIndex {
     type Target = usize;
@@ -363,30 +360,10 @@ impl<'e> Iterator for EntitiesIter<'e> {
     }
 }
 
-struct MatchedEntities {
-    archetype_visitor: ArchetypeVisitor,
-    matched_archetypes: Vec<ArchetypeIndex>,
-}
-
-impl MatchedEntities {
-    fn get<T>()
-
-    fn iter() -> MatchedEntitiesIter {}
-}
-
-struct MatchedEntitiesIter {
-    entities: RwLockReadGuard<EntitiesInner>,
-    matched_archetypes:,
-}
-
-trait JoinMatchGetter {
-    fn get_join_match(entities: &Entities) -> MatchedEntities
-}
-
 #[cfg(test)]
 mod tests {
-    use crate::{Entity, World};
     use crate::entity::Entities;
+    use crate::{Entity, World};
 
     #[test]
     fn entity_life() {

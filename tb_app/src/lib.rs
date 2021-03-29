@@ -37,11 +37,11 @@ impl Application {
         let mut world = World::default();
         loop {
             let level_manager: &mut LevelManager = world.insert(LevelManager::default);
-            world.insert_components()
-            if let Some(pending_level) = level_manager.pending_level.take() {
-                world
-            }
-            world.update();
+            // world.insert_components()
+            // if let Some(pending_level) = level_manager.pending_level.take() {
+            //     world
+            // }
+            // world.up
         }
     }
 }

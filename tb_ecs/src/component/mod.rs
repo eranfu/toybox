@@ -105,10 +105,15 @@ impl<'r, C: Component> Not for &'r mut WriteComponents<'r, C> {
 }
 
 impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComponents<'r, C, A> {
+    type Element = C;
     type ElementFetcher = &'r ComponentStorage<C>;
 
     fn open(mut self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
         (self.storage.entity_iter(), self.elem_fetcher())
+    }
+
+    fn entities(&self) -> &'r Entities {
+        self.entities
     }
 
     fn len(&self) -> usize {
@@ -118,14 +123,27 @@ impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComponents<'r, C, A>
     fn elem_fetcher(&mut self) -> Self::ElementFetcher {
         self.storage
     }
+
+    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity>> {
+        Box::new(self.storage.entity_iter())
+    }
+
+    fn fill_matcher(matcher: &mut ArchetypeMatcher) {
+        matcher.add_all(ComponentIndex::get::<C>());
+    }
 }
 
 impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
+    type Element = C;
     type ElementFetcher = &'r mut ComponentStorage<C>;
 
     fn open(self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
         let storage = unsafe { &mut *(&mut self.storage as *mut _ as *mut _) };
-        (self.storage.entity_iter(), storage)
+        (self.get_matched_entities(), storage)
+    }
+
+    fn entities(&self) -> &'r Entities {
+        self.entities
     }
 
     fn len(&self) -> usize {
@@ -135,6 +153,16 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
     fn elem_fetcher(&mut self) -> Self::ElementFetcher {
         let s: &'r mut Self = unsafe { std::mem::transmute(self) };
         s.storage
+    }
+
+    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity>> {
+        let components: &'r WriteComponents<'r, C> =
+            unsafe { &*(self as *const &mut _ as *const _) };
+        components.storage.entity_iter()
+    }
+
+    fn fill_matcher(matcher: &mut ArchetypeMatcher) {
+        matcher.add_all(ComponentIndex::get::<C>())
     }
 }
 

@@ -14,48 +14,9 @@ pub struct World {
     resources: Resources,
 }
 
-struct FetchError<R: Resource> {
-    _phantom: PhantomData<R>,
-}
-
-#[derive(Eq, PartialEq, Hash, Copy, Clone)]
-pub struct ResourceId {
-    id: TypeId,
-}
-
-pub trait Resource: 'static {}
-
-impl<R: Any> Resource for R {}
-
-impl<R: Resource> Default for FetchError<R> {
-    fn default() -> Self {
-        Self {
-            _phantom: Default::default(),
-        }
-    }
-}
-
-impl<R: Resource> Debug for FetchError<R> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        (self as &dyn Display).fmt(f)
-    }
-}
-
-impl<R: Resource> Display for FetchError<R> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "没有找到 Resource，请先调用 insert 添加 Resource。\nResource type name: [{}]",
-            std::any::type_name::<R>()
-        )
-    }
-}
-
-impl<R: Resource> Error for FetchError<R> {}
-
 impl World {
     pub fn insert<R: Resource>(&mut self, create: impl FnOnce() -> R) -> &mut R {
-        let r: &RefCell<_> = self
+        let r = self
             .resources
             .entry(ResourceId::new::<R>())
             .or_insert_with(|| RefCell::new(Box::new(create())));
@@ -86,6 +47,41 @@ impl World {
     }
 }
 
+struct FetchError<R: Resource> {
+    _phantom: PhantomData<R>,
+}
+
+impl<R: Resource> Default for FetchError<R> {
+    fn default() -> Self {
+        Self {
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<R: Resource> Debug for FetchError<R> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        (self as &dyn Display).fmt(f)
+    }
+}
+
+impl<R: Resource> Display for FetchError<R> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "没有找到 Resource，请先调用 insert 添加 Resource。\nResource type name: [{}]",
+            std::any::type_name::<R>()
+        )
+    }
+}
+
+impl<R: Resource> Error for FetchError<R> {}
+
+#[derive(Eq, PartialEq, Hash, Copy, Clone)]
+pub struct ResourceId {
+    id: TypeId,
+}
+
 impl ResourceId {
     pub(crate) fn new<R: Resource + ?Sized>() -> Self {
         ResourceId {
@@ -93,6 +89,10 @@ impl ResourceId {
         }
     }
 }
+
+pub trait Resource: 'static {}
+
+impl<R: Any> Resource for R {}
 
 #[cfg(test)]
 mod tests {

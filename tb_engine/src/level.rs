@@ -1,6 +1,6 @@
 use tb_ecs::*;
 
-use crate::asset::{AssetHandle, AssetLoader};
+use crate::asset::AssetHandle;
 use crate::prefab::Prefab;
 
 pub struct Level {

@@ -1,4 +1,3 @@
-use std::any::TypeId;
 use std::cell::RefCell;
 
 use rayon::{ThreadPool, ThreadPoolBuilder};
@@ -53,11 +52,6 @@ pub(crate) trait Runnable: 'static {
     fn run(&mut self, world: &World);
 }
 
-#[derive(Eq, PartialEq, Hash)]
-struct RunnableId {
-    type_id: TypeId,
-}
-
 impl Stage {
     fn new(group_num: usize) -> Self {
         let mut groups = vec![];
@@ -66,14 +60,6 @@ impl Stage {
             groups.push(Group::default());
         }
         Self { groups }
-    }
-}
-
-impl RunnableId {
-    fn new<R: Runnable>() -> Self {
-        Self {
-            type_id: TypeId::of::<R>(),
-        }
     }
 }
 

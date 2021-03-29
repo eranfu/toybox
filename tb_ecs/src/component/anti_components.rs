@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::*;
 
 pub struct AntiComponents<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
@@ -10,20 +12,20 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> AntiComponents<'r, S, C,
     }
 }
 
+pub struct AntiComponent<C: Component> {
+    _phantom: PhantomData<C>,
+}
+
 impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Join<'r> for AntiComponents<'r, S, C, A> {
+    type Element = AntiComponent<C>;
     type ElementFetcher = AntiComponentsFetch<'r, S, C, A>;
 
     fn open(mut self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
-        let storage = &self.components.storage;
-        (
-            Box::new(
-                self.components
-                    .entities
-                    .iter()
-                    .filter(move |&entity| !storage.contains(entity)),
-            ),
-            self.elem_fetcher(),
-        )
+        (self.get_matched_entities(), self.elem_fetcher())
+    }
+
+    fn entities(&self) -> &'r Entities {
+        self.components.entities
     }
 
     fn len(&self) -> usize {
@@ -34,6 +36,19 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Join<'r> for AntiCompone
         AntiComponentsFetch {
             components: self.components,
         }
+    }
+
+    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity>> {
+        let storage = &self.components.storage;
+        Box::new(
+            self.entities()
+                .iter()
+                .filter(move |&entity| !storage.contains(entity)),
+        )
+    }
+
+    fn fill_matcher(matcher: &mut ArchetypeMatcher) {
+        matcher.add_none(ComponentIndex::get::<C>())
     }
 }
 

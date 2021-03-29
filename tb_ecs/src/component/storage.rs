@@ -1,5 +1,6 @@
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::slice::Iter;
 
 use crate::{join, Component, Entity};
 
@@ -10,8 +11,12 @@ pub struct ComponentStorage<T: Component> {
 }
 
 impl<T: Component> ComponentStorage<T> {
+    pub fn open(&self) -> (Iter<'_, Entity>, &ComponentStorage<T>) {
+        (self.entities.iter(), self)
+    }
+
     pub(crate) fn entity_iter(&self) -> Box<dyn '_ + Iterator<Item = Entity>> {
-        Box::new(self.entities.iter().map(|entity| *entity))
+        Box::new(self.entities.iter().copied())
     }
 
     pub fn contains(&self, entity: Entity) -> bool {

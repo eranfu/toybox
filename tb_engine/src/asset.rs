@@ -1,14 +1,21 @@
-use std::any::TypeId;
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::ops::Deref;
 
-pub trait Assets {}
+pub trait Assets {
+    fn as_any(&self) -> &dyn Any;
+}
 
-pub struct AssetsOf<T> {
+pub struct AssetsOf<T: 'static> {
     assets: HashMap<u64, Box<T>>,
 }
 
-impl<T> Assets for AssetsOf<T> {}
+impl<T: 'static> Assets for AssetsOf<T> {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
 
 pub struct AssetHandle<T> {
     id: u64,
@@ -31,12 +38,13 @@ pub struct AssetLoader {
 }
 
 impl AssetLoader {
-    pub fn get<T: 'static>(&self, handle: AssetHandle<T>) -> Option<&Box<T>> {
+    pub fn get<T: 'static>(&self, handle: AssetHandle<T>) -> Option<&T> {
         self.type_to_assets
             .get(&TypeId::of::<T>())
             .and_then(|assets| {
-                let assets: &AssetsOf<T> = unsafe { std::mem::transmute(&**assets) };
+                let assets = unsafe { &*(assets.as_ref() as &_ as *const _ as *const AssetsOf<T>) };
                 assets.assets.get(&handle.id)
             })
+            .map(|asset| asset.deref())
     }
 }
