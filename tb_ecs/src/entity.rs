@@ -8,8 +8,8 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bit_set::BitSet;
 
-use crate::registry::{ComponentIndex, ComponentRegistry};
 use crate::{Component, SystemData, World, WriteComponents};
+use crate::registry::{ComponentIndex, ComponentRegistry};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Entity {
@@ -363,10 +363,30 @@ impl<'e> Iterator for EntitiesIter<'e> {
     }
 }
 
+struct MatchedEntities {
+    archetype_visitor: ArchetypeVisitor,
+    matched_archetypes: Vec<ArchetypeIndex>,
+}
+
+impl MatchedEntities {
+    fn get<T>()
+
+    fn iter() -> MatchedEntitiesIter {}
+}
+
+struct MatchedEntitiesIter {
+    entities: RwLockReadGuard<EntitiesInner>,
+    matched_archetypes:,
+}
+
+trait JoinMatchGetter {
+    fn get_join_match(entities: &Entities) -> MatchedEntities
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::entity::Entities;
     use crate::{Entity, World};
+    use crate::entity::Entities;
 
     #[test]
     fn entity_life() {

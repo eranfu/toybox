@@ -1,4 +1,6 @@
-use crate::Entity;
+use std::sync::RwLockReadGuard;
+
+use crate::{ArchetypeVisitor, Entities, Entity};
 
 pub trait Join<'j>: Sized {
     type ElementFetcher: ElementFetcher;
@@ -11,6 +13,7 @@ pub trait Join<'j>: Sized {
         }
     }
     fn open(self) -> (Box<dyn 'j + Iterator<Item = Entity>>, Self::ElementFetcher);
+    fn entities(&self) -> &'j Entities;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -73,19 +76,10 @@ macro_rules! impl_join_tuple {
             #[allow(non_snake_case)]
             fn open(self) -> (Box<dyn Iterator<Item = Entity> + 'j>, Self::ElementFetcher) {
                 let ($j0, $(mut $j1), +) = self;
-                let mut min_len = $j0.len();
-                let (iter, $j0) = $j0.open();
-                $(let (iter, $j1) = {
-                    let cur_len = $j1.len();
-                    if cur_len < min_len {
-                        min_len = cur_len;
-                        $j1.open()
-                    } else {
-                        (iter, $j1.elem_fetcher())
-                    }
-                });
-                +;
-                (iter, ($j0, $($j1), +))
+                let entities = $j0.entities();
+                let matched_entities = ($j0, $($j1), +).get_matched_entities();
+                let ($j0, $($j1), +) = ($j0.elem_fetcher(), $($j1.elem_fetcher()), +);
+                (matched_entities, ($j0, $($j1), +))
             }
 
             #[allow(non_snake_case)]
