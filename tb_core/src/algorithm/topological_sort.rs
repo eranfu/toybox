@@ -44,11 +44,10 @@ impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
     /// # Description
     /// `a` dependency `b`
     pub fn add_dependency_if_non_inverse(&mut self, a: T, b: T) {
-        let node_b = match self.nodes.get(&b) {
-            None => return,
-            Some(node_b) => node_b,
-        };
-        if node_b.dependencies.contains(&a) {
+        if a == b {
+            return;
+        }
+        if self.is_dependent(&b, &a) {
             return;
         }
         self.add_dependency(a, b)
@@ -56,6 +55,27 @@ impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
 
     pub fn visit_with_flag<F: Clone + Ord>(&self) -> VisitorWithFlag<T, F> {
         VisitorWithFlag::new(self)
+    }
+
+    fn is_dependent(&self, a: &T, b: &T) -> bool {
+        let a = match self.nodes.get(a) {
+            None => {
+                return false;
+            }
+            Some(a) => a,
+        };
+
+        if a.dependencies.contains(b) {
+            return true;
+        }
+
+        for a in &a.dependencies {
+            if self.is_dependent(a, b) {
+                return true;
+            }
+        }
+
+        false
     }
 }
 

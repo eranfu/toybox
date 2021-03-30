@@ -76,6 +76,12 @@ impl SystemRegistry {
                         .for_each(|read_after_write_system| {
                             graph.add_dependency(read_after_write_system, system_info);
                         });
+                });
+            });
+
+            registry.systems.iter().for_each(|system_info| {
+                system_info.writes.iter().for_each(|write_resource| {
+                    let write_resource_info = resources_info.get(write_resource).unwrap();
                     write_resource_info
                         .write_systems
                         .iter()
