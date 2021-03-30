@@ -62,7 +62,12 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> ElementFetcher
     type Element = ();
 
     fn fetch_elem(&mut self, _entity: Entity) -> Option<Self::Element> {
-        None
+        if !self.components.storage.contains(_entity) && self.components.entities.is_alive(_entity)
+        {
+            Some(())
+        } else {
+            None
+        }
     }
 }
 

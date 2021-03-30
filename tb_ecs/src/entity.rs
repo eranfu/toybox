@@ -1,7 +1,8 @@
+use std::any::TypeId;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::iter::Flatten;
+use std::iter::{Copied, Flatten, Fuse};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
 use std::slice::Iter;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
@@ -9,7 +10,7 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 use bit_set::BitSet;
 
 use crate::registry::{ComponentIndex, ComponentRegistry};
-use crate::{Component, SystemData, World, WriteComponents};
+use crate::{Component, Join, SystemData, World, WriteComponents};
 
 #[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Entity {
@@ -82,13 +83,14 @@ impl Entities {
 }
 
 #[derive(Default)]
-pub(crate) struct EntitiesInner {
+pub struct EntitiesInner {
     next_id: u64,
     len: usize,
+    matched_entities_map: RwLock<HashMap<TypeId, RwLock<MatchedEntities>>>,
     entity_to_index: HashMap<Entity, EntityIndex>,
     component_mask_to_archetype_index: HashMap<ComponentMask, ArchetypeIndex>,
-    pub(crate) archetypes_entities: Vec<Vec<Entity>>,
-    pub(crate) archetypes_component_mask: Vec<ComponentMask>,
+    archetypes_entities: Vec<Vec<Entity>>,
+    archetypes_component_mask: Vec<ComponentMask>,
     archetypes_add_to_next: Vec<HashMap<ComponentIndex, ArchetypeIndex>>,
     archetypes_remove_to_next: Vec<HashMap<ComponentIndex, ArchetypeIndex>>,
 }
@@ -357,6 +359,158 @@ impl<'e> Iterator for EntitiesIter<'e> {
 
     fn next(&mut self) -> Option<Self::Item> {
         self.inner.next().copied()
+    }
+}
+
+#[derive(Default)]
+pub struct ArchetypeMatcher {
+    all: ComponentMask,
+    none: ComponentMask,
+    // todo: any: ComponentMask,
+}
+
+impl ArchetypeMatcher {
+    pub(crate) fn add_all(&mut self, component_index: ComponentIndex) {
+        self.all.insert(*component_index);
+    }
+    pub(crate) fn add_none(&mut self, component_index: ComponentIndex) {
+        self.none.insert(*component_index);
+    }
+    pub(crate) fn is_matched(&self, archetype_component_mask: &ComponentMask) -> bool {
+        self.all.is_subset(archetype_component_mask)
+            && self.none.is_disjoint(archetype_component_mask)
+    }
+}
+
+struct MatchedEntities {
+    matcher: ArchetypeMatcher,
+    archetype_visitor: ArchetypeVisitor,
+    matched_archetypes: Vec<ArchetypeIndex>,
+}
+
+impl MatchedEntities {
+    fn get<'j, 'e, T: Join<'j>>(
+        entities: &'e RwLockReadGuard<'e, EntitiesInner>,
+    ) -> (
+        RwLockReadGuard<'e, HashMap<TypeId, RwLock<MatchedEntities>>>,
+        RwLockReadGuard<'e, MatchedEntities>,
+    ) {
+        let matched_entities_map = &entities.matched_entities_map;
+        let t_id = TypeId::of::<T::Element>();
+        let map_read = matched_entities_map.read().unwrap();
+        let (map, matched): (_, &'static RwLock<MatchedEntities>) =
+            if let Some(matched) = map_read.get(&t_id) {
+                let matched = unsafe { std::mem::transmute(matched) };
+                (map_read, matched)
+            } else {
+                drop(map_read);
+                let mut map_write = matched_entities_map.write().unwrap();
+                match map_write.entry(t_id) {
+                    Entry::Occupied(_occupied) => {}
+                    Entry::Vacant(vacant) => {
+                        vacant.insert(RwLock::new(MatchedEntities {
+                            matcher: T::create_matcher(),
+                            archetype_visitor: ArchetypeVisitor {
+                                cur_index: ArchetypeIndex(0),
+                            },
+                            matched_archetypes: vec![],
+                        }));
+                    }
+                }
+                drop(map_write);
+                let map_read = matched_entities_map.read().unwrap();
+                let matched = unsafe { std::mem::transmute(map_read.get(&t_id).unwrap()) };
+                (map_read, matched)
+            };
+        let matched_read = matched.read().unwrap();
+        let matched = if *matched_read.archetype_visitor.cur_index
+            >= entities.archetypes_component_mask.len()
+        {
+            matched_read
+        } else {
+            drop(matched_read);
+            let mut matched_write = matched.write().unwrap();
+            matched_write.do_match(entities);
+            drop(matched_write);
+            let matched_read = matched.read().unwrap();
+            matched_read
+        };
+
+        (map, matched)
+    }
+
+    fn do_match(&mut self, entities: &RwLockReadGuard<EntitiesInner>) {
+        let matcher = &self.matcher;
+        let matched_archetypes = &mut self.matched_archetypes;
+        entities.visit_archetype(
+            &mut self.archetype_visitor,
+            |archetype, archetype_component_mask| {
+                if matcher.is_matched(archetype_component_mask) {
+                    matched_archetypes.push(archetype);
+                }
+            },
+        );
+    }
+}
+
+pub(crate) struct MatchedEntitiesIter<'e> {
+    archetype_entities: Option<Copied<Iter<'e, Entity>>>,
+    entities: RwLockReadGuard<'e, EntitiesInner>,
+    archetypes: Fuse<Iter<'e, ArchetypeIndex>>,
+    _matched_entities_map: RwLockReadGuard<'e, HashMap<TypeId, RwLock<MatchedEntities>>>,
+    _matched_entities: RwLockReadGuard<'e, MatchedEntities>,
+}
+
+impl<'e> MatchedEntitiesIter<'e> {
+    pub(crate) fn get<'j, T: Join<'j>>(entities: RwLockReadGuard<'e, EntitiesInner>) -> Self {
+        let (matched_entities_map, matched_entities): (
+            RwLockReadGuard<'e, HashMap<TypeId, RwLock<MatchedEntities>>>,
+            RwLockReadGuard<'e, MatchedEntities>,
+        ) = unsafe { std::mem::transmute(MatchedEntities::get::<T>(&entities)) };
+
+        let archetypes =
+            unsafe { std::mem::transmute(matched_entities.matched_archetypes.iter().fuse()) };
+
+        Self {
+            archetype_entities: None,
+            entities,
+            archetypes,
+            _matched_entities_map: matched_entities_map,
+            _matched_entities: matched_entities,
+        }
+    }
+}
+
+impl<'e> Iterator for MatchedEntitiesIter<'e> {
+    type Item = Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.archetype_entities.as_mut() {
+                None => {
+                    self.archetype_entities = {
+                        match self.archetypes.next() {
+                            None => {
+                                return None;
+                            }
+                            Some(&archetype) => {
+                                let s: &MatchedEntitiesIter<'e> =
+                                    unsafe { &*(self as &mut _ as *mut _) };
+                                Some(s.entities.archetypes_entities[archetype].iter().copied())
+                            }
+                        }
+                    }
+                }
+                Some(archetype_entities) => match archetype_entities.next() {
+                    None => {
+                        self.archetype_entities = None;
+                    }
+                    entity @ Some(_) => {
+                        return entity;
+                    }
+                },
+            }
+        }
     }
 }
 
