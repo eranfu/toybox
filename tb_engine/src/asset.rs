@@ -3,19 +3,13 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
 
-pub trait Assets {
-    fn as_any(&self) -> &dyn Any;
-}
+pub trait Assets {}
 
 pub struct AssetsOf<T: 'static> {
     assets: HashMap<u64, Box<T>>,
 }
 
-impl<T: 'static> Assets for AssetsOf<T> {
-    fn as_any(&self) -> &dyn Any {
-        self
-    }
-}
+impl<T: 'static> Assets for AssetsOf<T> {}
 
 pub struct AssetHandle<T> {
     id: u64,
