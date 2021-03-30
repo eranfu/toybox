@@ -1,7 +1,7 @@
 use std::any::TypeId;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::iter::FlatMap;
+use std::iter::{Copied, FlatMap, Fuse};
 use std::lazy::SyncLazy;
 use std::slice::Iter;
 use std::sync::{RwLock, RwLockReadGuard};
@@ -135,30 +135,36 @@ impl MatchedEntities {
 }
 
 struct MatchedEntitiesIter<'e> {
-    _entities: RwLockReadGuard<'e, EntitiesInner>,
-    _matched_entities_cache: RwLockReadGuard<'static, HashMap<TypeId, RwLock<MatchedEntities>>>,
-    _matched_entities: RwLockReadGuard<'static, MatchedEntities>,
-    matched:
-        FlatMap<Iter<'e, ArchetypeIndex>, Iter<'e, Entity>, fn(&ArchetypeIndex) -> Iter<Entity>>,
+    _matched_entities_map: RwLockReadGuard<'static, HashMap<TypeId, RwLock<MatchedEntities>>>,
+    entities: RwLockReadGuard<'e, EntitiesInner>,
+    matched_entities: RwLockReadGuard<'static, MatchedEntities>,
+    archetypes: Option<Fuse<Iter<'e, ArchetypeIndex>>>,
+    archetype_entities: Option<Copied<Iter<'e, Entity>>>,
 }
 
 impl<'e> MatchedEntitiesIter<'e> {
-    fn get<'j, T: Join<'j>>(entities: RwLockReadGuard<EntitiesInner>) -> MatchedEntitiesIter {
-        let (matched_entities_cache, matched_entities) = MatchedEntities::get::<T>(&entities);
-        let matched = unsafe {
-            std::mem::transmute(
-                matched_entities
-                    .matched_archetypes
-                    .iter()
-                    .flat_map(|&archetype| entities.archetypes_entities[archetype].iter()),
-            )
+    fn new(
+        entities: RwLockReadGuard<'e, EntitiesInner>,
+        matched_entities_map: RwLockReadGuard<'static, HashMap<TypeId, RwLock<MatchedEntities>>>,
+        matched_entities: RwLockReadGuard<'static, MatchedEntities>,
+    ) -> Self {
+        let mut new = Self {
+            _matched_entities_map: matched_entities_map,
+            entities,
+            matched_entities,
+            archetypes: None,
+            archetype_entities: None,
         };
-        MatchedEntitiesIter {
-            _entities: entities,
-            _matched_entities_cache: matched_entities_cache,
-            _matched_entities: matched_entities,
-            matched,
-        }
+
+        new.archetypes = Some(new.matched_entities.matched_archetypes.iter().fuse());
+        new
+    }
+
+    fn get<'j, T: Join<'j>>(
+        entities: RwLockReadGuard<'e, EntitiesInner>,
+    ) -> MatchedEntitiesIter<'e> {
+        let (matched_entities_cache, matched_entities) = MatchedEntities::get::<T>(&entities);
+        MatchedEntitiesIter::new(entities, matched_entities_cache, matched_entities)
     }
 }
 
@@ -166,7 +172,32 @@ impl<'e> Iterator for MatchedEntitiesIter<'e> {
     type Item = Entity;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.matched.next().copied()
+        loop {
+            match self.archetype_entities.as_mut() {
+                None => {
+                    self.archetype_entities = match self.archetypes.as_mut() {
+                        None => {
+                            return None;
+                        }
+                        Some(archetypes) => {
+                            let archetypes_entities: &Vec<Vec<Entity>> =
+                                unsafe { std::mem::transmute(&self.entities) };
+                            archetypes
+                                .next()
+                                .map(|&archetype| archetypes_entities[archetype].iter().copied())
+                        }
+                    }
+                }
+                Some(archetype_entities) => match archetype_entities.next() {
+                    None => {
+                        self.archetype_entities = None;
+                    }
+                    entity @ Some(_) => {
+                        return entity;
+                    }
+                },
+            }
+        }
     }
 }
 
