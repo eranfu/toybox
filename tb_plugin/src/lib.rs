@@ -1,6 +1,3 @@
-#[macro_use]
-extern crate error_chain;
-
 use std::any::Any;
 use std::ffi::OsStr;
 
@@ -19,13 +16,10 @@ pub trait Plugin: Any + Send + Sync {
 
 #[macro_export]
 macro_rules! declare_plugin {
-    ($plugin_type:ty, $constructor:path) => {
+    ($plugin:expr) => {
         #[no_mangle]
-        pub extern "C" fn _plugin_create() -> *mut $crate::Plugin {
-            // make sure the constructor is the correct type.
-            let constructor: fn() -> $plugin_type = $constructor;
-            let plugin = constructor();
-            let plugin: Box<dyn $crate::Plugin> = Box::new(plugin);
+        pub fn _plugin_create() -> *mut dyn Plugin {
+            let plugin: Box<dyn Plugin> = Box::new($plugin);
             Box::into_raw(plugin)
         }
     };

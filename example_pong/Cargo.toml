@@ -1,5 +1,5 @@
 [package]
-name = "tb_editor"
+name = "example_pong"
 version = "0.1.0"
 authors = ["dahai-f <1119369173@qq.com>"]
 edition = "2018"
@@ -10,4 +10,4 @@ edition = "2018"
 crate-type = ["dylib"]
 
 [dependencies]
-toybox = { path = "../" }
+toybox = { path = ".." }

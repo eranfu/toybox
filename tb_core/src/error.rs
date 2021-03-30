@@ -1,30 +1,21 @@
-use std::backtrace::Backtrace;
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub struct AnyError {
     inner: Box<dyn std::error::Error>,
-    back_trace: Backtrace,
 }
 
 pub type AnyErrorResult<T> = Result<T, AnyError>;
 
 impl Display for AnyError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}\nstack backtrace from AnyError:\n{}",
-            self.inner, self.back_trace
-        )
+        write!(f, "{}", self.inner)
     }
 }
 
 impl<E: 'static + std::error::Error> From<E> for AnyError {
     fn from(e: E) -> Self {
-        Self {
-            inner: e.into(),
-            back_trace: Backtrace::capture(),
-        }
+        Self { inner: e.into() }
     }
 }
 

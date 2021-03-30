@@ -8,6 +8,8 @@ edition = "2018"
 
 [workspace]
 members = [
+    "example_pong",
+    "plugins/script_ts",
     "tb_core",
     "tb_engine",
     "tb_ecs",
@@ -22,6 +24,7 @@ members = [
 crate-type = ["dylib"]
 
 [dependencies]
+error-chain = "0.12.4"
 tb_core = { path = "tb_core" }
 tb_engine = { path = "tb_engine" }
 tb_ecs = { path = "tb_ecs" }
