@@ -21,7 +21,7 @@ members = [
 ]
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["dylib", "rlib"]
 
 [dependencies]
 error-chain = "0.12.4"

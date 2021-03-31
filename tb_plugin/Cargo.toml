@@ -9,4 +9,3 @@ edition = "2018"
 [dependencies]
 libloading = "0.7.0"
 error-chain = "0.12.4"
-log = "0.4.14"

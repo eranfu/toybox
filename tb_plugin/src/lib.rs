@@ -2,7 +2,6 @@ use std::any::Any;
 use std::ffi::OsStr;
 
 use libloading::{Library, Symbol};
-use log::debug;
 
 use errors::*;
 
@@ -18,9 +17,8 @@ pub trait Plugin: Any + Send + Sync {
 macro_rules! declare_plugin {
     ($plugin:expr) => {
         #[no_mangle]
-        pub fn _plugin_create() -> *mut dyn Plugin {
-            let plugin: Box<dyn Plugin> = Box::new($plugin);
-            Box::into_raw(plugin)
+        pub fn _plugin_create() -> Box<dyn Plugin> {
+            Box::new($plugin)
         }
     };
 }
@@ -33,7 +31,7 @@ pub struct PluginManager {
 
 impl PluginManager {
     pub fn load_plugin(&mut self, filename: impl AsRef<OsStr>) -> Result<()> {
-        type PluginCreate = fn() -> *mut dyn Plugin;
+        type PluginCreate = fn() -> Box<dyn Plugin>;
         let lib = unsafe { Library::new(filename).chain_err(|| "Failed to load library")? };
         self.loaded_libraries.push(lib);
         let lib = self.loaded_libraries.last().unwrap();
@@ -42,9 +40,9 @@ impl PluginManager {
                 .chain_err(|| "Failed to find _plugin_create symbol")?
         };
         let plugin = plugin_create();
-        unsafe { self.plugins.push(Box::from_raw(plugin)) }
+        self.plugins.push(plugin);
         let plugin = self.plugins.last().unwrap();
-        debug!("Loaded plugin: {}", plugin.name());
+        println!("Loaded plugin: {}", plugin.name());
         plugin.on_load();
         Ok(())
     }
@@ -52,7 +50,7 @@ impl PluginManager {
 
 impl Drop for PluginManager {
     fn drop(&mut self) {
-        debug!("Unloading plugins");
+        println!("Unloading plugins");
         for plugin in self.plugins.drain(..) {
             plugin.on_unload();
         }
