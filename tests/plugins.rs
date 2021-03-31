@@ -8,6 +8,13 @@ fn it_works() -> AnyErrorResult<()> {
     Ok(())
 }
 
+mod dynamic_reload {
+    use toybox::*;
+
+    #[test]
+    fn it_works() {}
+}
+
 mod load_ecs_info {
     use toybox::*;
 

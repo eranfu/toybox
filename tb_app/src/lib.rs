@@ -4,6 +4,10 @@ use tb_core::error::AnyError;
 use tb_ecs::{Scheduler, SystemInfo, World};
 use tb_engine::level::LevelManager;
 
+mod dir;
+mod errors;
+mod plugin;
+
 pub struct Application {
     env_args: Vec<String>,
 }
@@ -13,24 +17,6 @@ impl Application {
         Ok(Application {
             env_args: std::env::args().collect(),
         })
-    }
-
-    pub fn root_dir() -> Result<path::PathBuf, io::Error> {
-        if let Some(manifest_dir) = env::var_os("CARGO_MANIFEST_DIR") {
-            return Ok(path::PathBuf::from(manifest_dir));
-        }
-
-        let mut exe = std::fs::canonicalize(env::current_exe()?)?;
-
-        // Modify in-place to avoid an extra copy.
-        if exe.pop() {
-            return Ok(exe);
-        }
-
-        Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Failed to find an application root",
-        ))
     }
 
     pub fn run(&mut self) {
