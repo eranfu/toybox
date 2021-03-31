@@ -137,6 +137,10 @@ impl SystemInfo {
             create: || Box::new(S::default()),
         }
     }
+
+    pub fn name(&self) -> &String {
+        &self.name
+    }
 }
 
 impl PartialEq for &SystemInfo {

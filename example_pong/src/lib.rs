@@ -1,4 +1,4 @@
-use toybox::plugin::*;
+use toybox::*;
 
 struct ExamplePong {}
 
