@@ -1,22 +1,30 @@
+use error::*;
 use toybox::*;
 
+error_chain! {
+    links {
+        Plugin(plugin::Error, plugin::ErrorKind);
+    }
+}
+
 #[test]
-fn it_works() -> AnyErrorResult<()> {
-    let mut plugin_manager = PluginManager::default();
+fn it_works() -> Result<()> {
+    let mut plugin_manager = plugin::PluginManager::default();
     plugin_manager.load_plugin("script_ts")?;
     plugin_manager.load_plugin("example_pong")?;
     Ok(())
 }
 
-mod dynamic_reload {
-    use toybox::*;
-
-    #[test]
-    fn it_works() {}
-}
-
 mod load_ecs_info {
+    use error::*;
     use toybox::*;
+
+    error_chain! {
+        links {
+            Plugin(plugin::Error, plugin::ErrorKind);
+            Topo(algorithm::topological_sort::Error, algorithm::topological_sort::ErrorKind);
+        }
+    }
 
     #[system]
     struct TestSystem {}
@@ -28,8 +36,8 @@ mod load_ecs_info {
     }
 
     #[test]
-    fn load_ecs_info() -> AnyErrorResult<()> {
-        let mut plugin_manager = PluginManager::default();
+    fn load_ecs_info() -> Result<()> {
+        let mut plugin_manager = plugin::PluginManager::default();
         plugin_manager.load_plugin("script_ts")?;
         plugin_manager.load_plugin("example_pong")?;
 

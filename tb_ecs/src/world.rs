@@ -1,11 +1,15 @@
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::error::Error;
-use std::fmt::{Debug, Display, Formatter};
-use std::marker::PhantomData;
+use std::fmt::Debug;
 
-use tb_core::AnyErrorResult;
+use tb_core::error::*;
+
+error_chain! {
+    errors {
+        Fetch
+    }
+}
 
 type Resources = HashMap<ResourceId, RefCell<Box<dyn Resource>>>;
 
@@ -23,18 +27,18 @@ impl World {
         unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) }
     }
 
-    pub fn try_fetch<R: Resource>(&self) -> AnyErrorResult<&R> {
+    pub fn try_fetch<R: Resource>(&self) -> Result<&R> {
         self.resources
             .get(&ResourceId::new::<R>())
             .map(|r| unsafe { &*(r.borrow().as_ref() as *const dyn Resource as *const R) })
-            .ok_or_else(|| FetchError::<R>::default().into())
+            .chain_err(|| ErrorKind::Fetch)
     }
 
-    pub fn try_fetch_mut<R: Resource>(&self) -> AnyErrorResult<&mut R> {
+    pub fn try_fetch_mut<R: Resource>(&self) -> Result<&mut R> {
         self.resources
             .get(&ResourceId::new::<R>())
             .map(|r| unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) })
-            .ok_or_else(|| FetchError::<R>::default().into())
+            .chain_err(|| ErrorKind::Fetch)
     }
 
     pub fn fetch<R: Resource>(&self) -> &R {
@@ -46,36 +50,6 @@ impl World {
         self.try_fetch_mut().unwrap()
     }
 }
-
-struct FetchError<R: Resource> {
-    _phantom: PhantomData<R>,
-}
-
-impl<R: Resource> Default for FetchError<R> {
-    fn default() -> Self {
-        Self {
-            _phantom: Default::default(),
-        }
-    }
-}
-
-impl<R: Resource> Debug for FetchError<R> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        (self as &dyn Display).fmt(f)
-    }
-}
-
-impl<R: Resource> Display for FetchError<R> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "没有找到 Resource，请先调用 insert 添加 Resource。\nResource type name: [{}]",
-            std::any::type_name::<R>()
-        )
-    }
-}
-
-impl<R: Resource> Error for FetchError<R> {}
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone)]
 pub struct ResourceId {

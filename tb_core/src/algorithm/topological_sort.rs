@@ -1,8 +1,14 @@
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, LinkedList};
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::hash::Hash;
+
+use crate::error::*;
+
+error_chain! {
+    errors {
+        CircularDependency
+    }
+}
 
 struct Node<T> {
     item: T,
@@ -112,7 +118,7 @@ impl<'d, T: Eq + Hash + Clone, F: Clone + Ord> VisitorWithFlag<'d, T, F> {
 }
 
 impl<'d, T: Eq + Hash + Clone, F: 'd + Clone + Ord> Iterator for VisitorWithFlag<'d, T, F> {
-    type Item = Result<(T, Flag<'d, T, F>), VisitingError>;
+    type Item = Result<(T, Flag<'d, T, F>)>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.has_error {
@@ -147,7 +153,7 @@ impl<'d, T: Eq + Hash + Clone, F: 'd + Clone + Ord> Iterator for VisitorWithFlag
                         .push_back((child_node.item.clone(), child_node.dependencies.iter()));
                 } else {
                     self.has_error = true;
-                    return Some(Err(VisitingError::CircularDependency));
+                    return Some(Err(ErrorKind::CircularDependency.into()));
                 }
             } else {
                 break;
@@ -173,23 +179,6 @@ impl<'d, T: Eq + Hash + Clone, F: 'd + Clone + Ord> Iterator for VisitorWithFlag
         )))
     }
 }
-
-#[derive(Debug)]
-pub enum VisitingError {
-    CircularDependency,
-}
-
-impl Display for VisitingError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VisitingError::CircularDependency => {
-                Display::fmt("VisitingError::CircularDependency", f)
-            }
-        }
-    }
-}
-
-impl Error for VisitingError {}
 
 pub struct Flag<'d, T: Eq + Hash + Clone, F: Clone + Ord> {
     item: T,
@@ -231,7 +220,7 @@ fn set_flag<T: Eq + Hash, F: Ord>(flags: &mut HashMap<T, F>, item: T, flag: F) -
 
 #[cfg(test)]
 mod tests {
-    use crate::algorithm::topological_sort::{TopologicalGraph, VisitingError};
+    use crate::algorithm::topological_sort::TopologicalGraph;
 
     #[test]
     fn it_works() {
@@ -286,11 +275,5 @@ mod tests {
         }
         assert_eq!(result, assert_result);
         assert_eq!(flag_result, assert_flag_result);
-    }
-
-    #[test]
-    fn display_visiting_error() {
-        let e = VisitingError::CircularDependency;
-        println!("{}", e)
     }
 }

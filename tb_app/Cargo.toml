@@ -8,7 +8,7 @@ edition = "2018"
 
 [dependencies]
 rayon = "1.5.0"
-dynamic_reload = "0.4.0"
+live_lib = { path = "../../live_lib" }
 tb_core = { path = "../tb_core" }
 tb_ecs = { path = "../tb_ecs" }
 tb_engine = { path = "../tb_engine" }
