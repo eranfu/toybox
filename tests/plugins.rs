@@ -1,3 +1,5 @@
+use std::time::Duration;
+
 use error::*;
 use toybox::*;
 
@@ -8,11 +10,14 @@ error_chain! {
 }
 
 #[test]
-fn it_works() -> Result<()> {
+fn it_works() {
     let mut plugin_manager = plugin::PluginManager::default();
-    plugin_manager.load_plugin("script_ts")?;
-    plugin_manager.load_plugin("example_pong")?;
-    Ok(())
+    plugin_manager.load_plugin("script_ts");
+    plugin_manager.load_plugin("example_pong");
+    loop {
+        plugin_manager.update();
+        std::thread::sleep(Duration::from_secs(1));
+    }
 }
 
 mod load_ecs_info {
@@ -38,8 +43,8 @@ mod load_ecs_info {
     #[test]
     fn load_ecs_info() -> Result<()> {
         let mut plugin_manager = plugin::PluginManager::default();
-        plugin_manager.load_plugin("script_ts")?;
-        plugin_manager.load_plugin("example_pong")?;
+        plugin_manager.load_plugin("script_ts");
+        plugin_manager.load_plugin("example_pong");
 
         for system in SystemRegistry::systems() {
             let system = system?;

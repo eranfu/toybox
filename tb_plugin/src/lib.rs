@@ -31,13 +31,14 @@ pub struct PluginManager {
 
 impl PluginManager {
     pub fn update(&mut self) {
-        self.loader.update(&mut self.plugins);
+        self.loader.update(&mut self.plugins).unwrap();
     }
 
-    pub fn load_plugin(&mut self, filename: &str) -> Result<()> {
+    pub fn load_plugin(&mut self, lib_name: &str) {
         self.loader
-            .add_library(filename, &mut self.plugins)
+            .add_library(lib_name, &mut self.plugins)
             .chain_err(|| "Failed to load library")
+            .unwrap()
     }
 
     fn post_load(plugins: &mut HashMap<String, Box<dyn Plugin>>, lib: &Lib) -> Result<()> {
@@ -45,7 +46,7 @@ impl PluginManager {
 
         match plugins.entry(lib.name().clone()) {
             Entry::Occupied(_occupied) => {
-                bail!(format!("The lib is already loaded. name: {}", lib.name()))
+                bail!("The lib is already loaded. name: {}", lib.name())
             }
             Entry::Vacant(vacant) => {
                 let plugin_create: Symbol<PluginCreate> = unsafe {
@@ -72,7 +73,7 @@ impl PluginManager {
 impl Default for PluginManager {
     fn default() -> Self {
         Self {
-            loader: Loader::new(Self::post_load, Self::pre_unload).unwrap(),
+            loader: Loader::new(vec![], Self::post_load, Self::pre_unload).unwrap(),
             plugins: Default::default(),
         }
     }

@@ -17,6 +17,7 @@ members = [
     "tb_gameplay",
     "tb_app",
     "tb_editor",
+    "tb_plugin",
 ]
 
 [lib]
@@ -30,3 +31,4 @@ tb_ecs = { path = "tb_ecs" }
 tb_ecs_macro = { path = "tb_ecs_macro" }
 tb_gameplay = { path = "tb_gameplay" }
 tb_app = { path = "tb_app" }
+tb_plugin = { path = "tb_plugin" }

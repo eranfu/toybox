@@ -1,8 +1,7 @@
 use tb_ecs::World;
 use tb_engine::level::LevelManager;
 
-mod dir;
-pub mod plugin;
+pub mod dir;
 
 pub struct Application {
     env_args: Vec<String>,

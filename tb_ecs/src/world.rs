@@ -7,7 +7,10 @@ use tb_core::error::*;
 
 error_chain! {
     errors {
-        Fetch
+        Fetch(resource_type_name: String) {
+            description("Failed to fetch resource"),
+            display("Failed to fetch resource. type_name: {}", resource_type_name),
+        }
     }
 }
 
@@ -31,14 +34,14 @@ impl World {
         self.resources
             .get(&ResourceId::new::<R>())
             .map(|r| unsafe { &*(r.borrow().as_ref() as *const dyn Resource as *const R) })
-            .chain_err(|| ErrorKind::Fetch)
+            .chain_err(|| ErrorKind::Fetch(std::any::type_name::<R>().into()))
     }
 
     pub fn try_fetch_mut<R: Resource>(&self) -> Result<&mut R> {
         self.resources
             .get(&ResourceId::new::<R>())
             .map(|r| unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) })
-            .chain_err(|| ErrorKind::Fetch)
+            .chain_err(|| ErrorKind::Fetch(std::any::type_name::<R>().into()))
     }
 
     pub fn fetch<R: Resource>(&self) -> &R {
@@ -96,9 +99,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(
-        expected = "没有找到 Resource，请先调用 insert 添加 Resource。\nResource type name: [tb_ecs::world::tests::TestResource]"
-    )]
+    #[should_panic(expected = "Error(Fetch(\"tb_ecs::world::tests::TestResource\")")]
     fn fetch_resource_failed() {
         let world = World::default();
         let _test_resource = world.fetch::<TestResource>();

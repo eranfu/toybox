@@ -1,10 +1,10 @@
-use toybox::*;
+use toybox::plugin::*;
 
 struct ScriptTs {}
 
 impl Plugin for ScriptTs {
     fn name(&self) -> &'static str {
-        "script_ts"
+        "script_t hot"
     }
 }
 

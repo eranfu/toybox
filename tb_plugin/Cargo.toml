@@ -1,12 +1,12 @@
 [package]
-name = "tb_editor"
+name = "tb_plugin"
 version = "0.1.0"
 authors = ["dahai-f <1119369173@qq.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
-[lib]
-
 [dependencies]
-toybox = { path = "../" }
+error-chain = "0.12.4"
+live_lib = { path = "../../live_lib" }
+tb_core = { path = "../tb_core" }

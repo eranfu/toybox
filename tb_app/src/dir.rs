@@ -23,8 +23,8 @@ mod tests {
     use crate::dir;
 
     #[test]
-    fn target_dir() -> dir::Result<()> {
-        println!("{:?}", dir::target_dir()?);
-        Ok(())
+    fn target_dir() {
+        println!("target dir: {:?}", dir::target_dir());
+        println!("current dir: {:?}", std::env::current_dir());
     }
 }
