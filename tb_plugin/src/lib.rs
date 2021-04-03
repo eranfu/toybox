@@ -41,6 +41,10 @@ impl PluginManager {
             .unwrap()
     }
 
+    pub fn get_plugin(&self, lib_name: &str) -> Option<&dyn Plugin> {
+        self.plugins.get(lib_name).map(|p| p.as_ref())
+    }
+
     fn post_load(plugins: &mut HashMap<String, Box<dyn Plugin>>, lib: &Lib) -> Result<()> {
         type PluginCreate = fn() -> Box<dyn Plugin>;
 

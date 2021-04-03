@@ -10,12 +10,16 @@ error_chain! {
 }
 
 #[test]
-fn it_works() {
+fn hot_reload() {
     let mut plugin_manager = plugin::PluginManager::default();
     plugin_manager.load_plugin("script_ts");
     plugin_manager.load_plugin("example_pong");
     loop {
         plugin_manager.update();
+        let example_pong = plugin_manager.get_plugin("example_pong").unwrap();
+        if example_pong.name() == "exit" {
+            break;
+        }
         std::thread::sleep(Duration::from_secs(1));
     }
 }
