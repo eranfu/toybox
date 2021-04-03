@@ -4,7 +4,7 @@ struct ExamplePong {}
 
 impl Plugin for ExamplePong {
     fn name(&self) -> &'static str {
-        "exit"
+        "example_pong"
     }
 }
 

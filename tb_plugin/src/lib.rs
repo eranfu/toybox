@@ -1,8 +1,6 @@
 use std::any::Any;
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
 
-use live_lib::{Lib, Loader, Symbol};
+use live_lib::{LibPartner, Library, Loader, Symbol};
 
 use tb_core::error::*;
 
@@ -25,69 +23,56 @@ macro_rules! declare_plugin {
 }
 
 pub struct PluginManager {
-    loader: Loader<HashMap<String, Box<dyn Plugin>>, Result<()>>,
-    plugins: HashMap<String, Box<dyn Plugin>>,
+    loader: Loader<Box<dyn Plugin>>,
 }
 
 impl PluginManager {
     pub fn update(&mut self) {
-        self.loader.update(&mut self.plugins).unwrap();
+        self.loader.update().unwrap();
     }
 
     pub fn load_plugin(&mut self, lib_name: &str) {
         self.loader
-            .add_library(lib_name, &mut self.plugins)
+            .add_library(lib_name)
             .chain_err(|| "Failed to load library")
             .unwrap()
     }
 
     pub fn get_plugin(&self, lib_name: &str) -> Option<&dyn Plugin> {
-        self.plugins.get(lib_name).map(|p| p.as_ref())
-    }
-
-    fn post_load(plugins: &mut HashMap<String, Box<dyn Plugin>>, lib: &Lib) -> Result<()> {
-        type PluginCreate = fn() -> Box<dyn Plugin>;
-
-        match plugins.entry(lib.name().clone()) {
-            Entry::Occupied(_occupied) => {
-                bail!("The lib is already loaded. name: {}", lib.name())
-            }
-            Entry::Vacant(vacant) => {
-                let plugin_create: Symbol<PluginCreate> = unsafe {
-                    lib.lib()
-                        .get(b"_plugin_create")
-                        .chain_err(|| "Failed to find _plugin_create symbol".to_owned())?
-                };
-                let plugin = plugin_create();
-                println!("Loaded plugin: {}", plugin.name());
-                vacant.insert(plugin).on_load();
-                Ok(())
-            }
-        }
-    }
-
-    fn pre_unload(plugins: &mut HashMap<String, Box<dyn Plugin>>, lib: &Lib) -> Result<()> {
-        if let Some(plugin) = plugins.remove(lib.name()) {
-            plugin.on_unload();
-        }
-        Ok(())
+        self.loader
+            .get(lib_name)
+            .map(|(_lib, plugin)| plugin.as_ref())
     }
 }
 
 impl Default for PluginManager {
     fn default() -> Self {
         Self {
-            loader: Loader::new(vec![], Self::post_load, Self::pre_unload).unwrap(),
-            plugins: Default::default(),
+            loader: Loader::new(vec![]).unwrap(),
         }
     }
 }
 
-impl Drop for PluginManager {
-    fn drop(&mut self) {
-        println!("Unloading plugins");
-        for (_, plugin) in self.plugins.drain() {
-            plugin.on_unload();
-        }
+impl LibPartner for Box<dyn Plugin> {
+    type LoadResult = Result<Self>;
+    type UnloadResult = Result<()>;
+
+    fn load(lib: &Library) -> Self::LoadResult {
+        type PluginCreate = fn() -> Box<dyn Plugin>;
+        let plugin_create: Symbol<PluginCreate> = unsafe {
+            lib.get(b"_plugin_create")
+                .chain_err(|| "Failed to find _plugin_create symbol".to_owned())?
+        };
+        let plugin: Box<dyn Plugin> = plugin_create();
+        println!("Loaded plugin: {}", plugin.name());
+        plugin.on_load();
+        Ok(plugin)
+    }
+
+    fn unload(&mut self, _lib: &Library) -> Self::UnloadResult {
+        let name = self.name().to_owned();
+        self.on_unload();
+        println!("Unloaded plugin: {}", name);
+        Ok(())
     }
 }
