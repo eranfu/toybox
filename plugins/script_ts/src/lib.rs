@@ -4,7 +4,7 @@ struct ScriptTs {}
 
 impl Plugin for ScriptTs {
     fn name(&self) -> &'static str {
-        "script_t hot"
+        "script_t"
     }
 }
 

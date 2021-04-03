@@ -8,5 +8,5 @@ edition = "2018"
 
 [dependencies]
 error-chain = "0.12.4"
-live_lib = { path = "../../live_lib" }
+live_lib = { git = "https://github.com/dahai-f/live_lib.git" }
 tb_core = { path = "../tb_core" }

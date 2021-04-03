@@ -14,6 +14,11 @@ fn hot_reload() {
     let mut plugin_manager = plugin::PluginManager::default();
     plugin_manager.load_plugin("script_ts");
     plugin_manager.load_plugin("example_pong");
+
+    for _i in 0..100 {
+        plugin_manager.update();
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 mod load_ecs_info {
