@@ -1,19 +1,14 @@
 use std::time::Duration;
 
-use error::*;
 use toybox::*;
 
-error_chain! {
-    links {
-        Plugin(plugin::Error, plugin::ErrorKind);
-    }
-}
+error_chain! {}
 
 #[test]
 fn hot_reload() {
-    let mut plugin_manager = plugin::PluginManager::default();
-    plugin_manager.load_plugin("script_ts");
-    plugin_manager.load_plugin("example_pong");
+    let mut plugin_manager = PluginManager::default();
+    plugin_manager.add_plugin("script_ts");
+    plugin_manager.add_plugin("example_pong");
 
     for _i in 0..100 {
         plugin_manager.update();
@@ -22,15 +17,9 @@ fn hot_reload() {
 }
 
 mod load_ecs_info {
-    use error::*;
     use toybox::*;
 
-    error_chain! {
-        links {
-            Plugin(plugin::Error, plugin::ErrorKind);
-            Topo(algorithm::topological_sort::Error, algorithm::topological_sort::ErrorKind);
-        }
-    }
+    error_chain! {}
 
     #[system]
     struct TestSystem {}
@@ -43,13 +32,16 @@ mod load_ecs_info {
 
     #[test]
     fn load_ecs_info() -> Result<()> {
-        let mut plugin_manager = plugin::PluginManager::default();
-        plugin_manager.load_plugin("script_ts");
-        plugin_manager.load_plugin("example_pong");
+        let mut plugin_manager = PluginManager::default();
+        plugin_manager.add_plugin("script_ts");
+        plugin_manager.add_plugin("example_pong");
 
-        for system in SystemRegistry::systems() {
-            let system = system?;
-            println!("{}", system.0.name());
+        for system in inventory::iter::<SystemInfo> {
+            println!(
+                "lod_ecs_info system. address: {}, name: {}",
+                system as *const _ as usize,
+                system.name()
+            );
         }
         Ok(())
     }

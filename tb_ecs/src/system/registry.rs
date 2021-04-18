@@ -16,7 +16,15 @@ pub struct SystemRegistry {
 }
 
 impl SystemRegistry {
-    pub fn get_instance() -> &'static SystemRegistry {
+    pub fn add_system_infos(infos: inventory::iter<SystemInfo>) {}
+
+    pub fn systems() -> VisitorWithFlag<'static, &'static SystemInfo, usize> {
+        SystemRegistry::get_instance()
+            .system_topological_graph
+            .visit_with_flag()
+    }
+
+    fn get_instance() -> &'static SystemRegistry {
         static SYSTEM_REGISTRY: SyncLazy<SystemRegistry> = SyncLazy::new(|| {
             let mut registry = SystemRegistry {
                 systems: Default::default(),
@@ -94,12 +102,6 @@ impl SystemRegistry {
             registry
         });
         &*SYSTEM_REGISTRY
-    }
-
-    pub fn systems() -> VisitorWithFlag<'static, &'static SystemInfo, usize> {
-        SystemRegistry::get_instance()
-            .system_topological_graph
-            .visit_with_flag()
     }
 }
 

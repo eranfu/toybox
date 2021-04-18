@@ -4,10 +4,10 @@ use tb_ecs::*;
 
 pub struct Prefab {
     root_entity: Entity,
-    components: Vec<Box<dyn Components>>,
+    components: Vec<Box<dyn ComponentsInPrefab>>,
 }
 
-trait Components {
+trait ComponentsInPrefab {
     fn attach(&self, world: &mut World, link: &mut PrefabLink);
 }
 
@@ -21,46 +21,64 @@ pub struct PrefabLink {
     local_entity_to_world_map: BiHashMap<Entity, Entity>,
 }
 
-impl<C> Components for ComponentStorage<C>
+struct ComponentStorageInPrefab<C: Component> {
+    components: Vec<C>,
+    entities: Vec<Entity>,
+}
+
+impl<C: Component> ComponentStorageInPrefab<C> {
+    pub(crate) fn insert(&mut self, entity: Entity, component: C) {
+        self.entities.push(entity);
+        self.components.push(component);
+    }
+}
+
+impl<C: Component> Default for ComponentStorageInPrefab<C> {
+    fn default() -> Self {
+        Self {
+            components: vec![],
+            entities: vec![],
+        }
+    }
+}
+
+impl<C> ComponentsInPrefab for ComponentStorageInPrefab<C>
 where
     C: Component,
 {
     default fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         world.insert_components::<C>();
         world.insert(Entities::default);
-        let storage = world.fetch_components_mut::<C>();
-        let entities = world.fetch_mut::<Entities>();
-        let (entity, mut component) = self.open();
-        entity.for_each(|&e| {
-            storage.insert(
-                link.build_link(e, entities),
-                component.fetch_elem(e).unwrap().clone(),
-            );
+        let mut components_in_world = WriteComponents::<C>::fetch(world);
+        let entities = world.fetch::<Entities>();
+        let (entity, components) = (self.entities.iter(), self.components.iter());
+        entity.zip(components).for_each(|(&entity, component)| {
+            components_in_world.insert(link.build_link(entity, entities), component.clone());
         });
     }
 }
 
-impl<C> Components for ComponentStorage<C>
+impl<C> ComponentsInPrefab for ComponentStorageInPrefab<C>
 where
     for<'e> C: ComponentWithEntityRef<'e>,
 {
     fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         world.insert_components::<C>();
-        let storage = world.fetch_components_mut::<C>();
+        let mut components_in_world = WriteComponents::<C>::fetch(world);
         let entities = world.fetch_mut::<Entities>();
-        let (entity, mut components) = self.open();
-        entity.for_each(|&e| {
-            let mut component: C = components.fetch_elem(e).unwrap().clone();
+        let (entity, components) = (self.entities.iter(), self.components.iter());
+        entity.zip(components).for_each(|(&entity, component)| {
+            let mut component: C = component.clone();
             let mut entity_ref = component.get_entity_ref();
             ConvertToWorld::convert_to_world(&mut entity_ref, link, entities);
             drop(entity_ref);
-            storage.insert(link.build_link(e, entities), component);
+            components_in_world.insert(link.build_link(entity, entities), component);
         });
     }
 }
 
 impl PrefabLink {
-    fn build_link(&mut self, local: Entity, entities: &mut Entities) -> Entity {
+    fn build_link(&mut self, local: Entity, entities: &Entities) -> Entity {
         match self.local_entity_to_world_map.get_by_left(&local) {
             None => {
                 let entity = entities.new_entity();
@@ -86,9 +104,8 @@ impl Prefab {
         }
         world.insert(Entities::default);
         world.insert_components::<PrefabLink>();
-        world
-            .fetch_components_mut::<PrefabLink>()
-            .insert(link.build_link(self.root_entity, world.fetch_mut()), link);
+        let mut prefab_links = WriteComponents::<PrefabLink>::fetch(world);
+        prefab_links.insert(link.build_link(self.root_entity, world.fetch_mut()), link);
     }
 }
 
@@ -104,7 +121,7 @@ impl<E: EntityRef> ConvertToWorld for E {
 mod tests {
     use tb_ecs::*;
 
-    use crate::prefab::{ComponentWithEntityRef, Prefab};
+    use crate::prefab::{ComponentStorageInPrefab, ComponentWithEntityRef, Prefab};
 
     #[component]
     struct Component0 {
@@ -131,17 +148,16 @@ mod tests {
         };
 
         let prefab = {
-            let mut components0 = ComponentStorage::<Component0>::default();
-
+            let mut components0 = ComponentStorageInPrefab::<Component0>::default();
             components0.insert(Entity::new(10), Component0 { value: 10 });
-            let mut components1 = ComponentStorage::<Component1>::default();
+            let mut components1 = ComponentStorageInPrefab::<Component1>::default();
             components1.insert(
                 Entity::new(7),
                 Component1 {
                     entity_a: entities[15],
                 },
             );
-            let mut components2 = ComponentStorage::<Component2>::default();
+            let mut components2 = ComponentStorageInPrefab::<Component2>::default();
             components2.insert(
                 Entity::new(15),
                 Component2 {
@@ -149,7 +165,7 @@ mod tests {
                     entity_b: entities[10],
                 },
             );
-            let components: Vec<Box<dyn crate::prefab::Components>> = vec![
+            let components: Vec<Box<dyn crate::prefab::ComponentsInPrefab>> = vec![
                 Box::new(components0),
                 Box::new(components1),
                 Box::new(components2),

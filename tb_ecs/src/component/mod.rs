@@ -184,7 +184,7 @@ impl<'r, C: Component> WriteComponents<'r, C> {
             _phantom: Default::default(),
         }
     }
-    pub(crate) fn insert(&mut self, entity: Entity, component: C) {
+    pub fn insert(&mut self, entity: Entity, component: C) {
         self.storage.insert(entity, component);
         self.entities.on_component_inserted::<C>(entity);
     }

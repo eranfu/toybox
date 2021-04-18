@@ -56,6 +56,8 @@ pub struct ComponentRegistry {
 }
 
 impl ComponentRegistry {
+    pub fn add_component_infos(component_infos: Box<dyn Iterator<Item = &'static ComponentInfo>>) {}
+
     pub(crate) fn remove_from_world(
         component_index: ComponentIndex,
         world: &World,

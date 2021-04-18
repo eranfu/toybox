@@ -11,3 +11,4 @@ crate-type = ["dylib", "rlib"]
 
 [dependencies]
 toybox = { path = "../../" }
+inventory = "0.1.10"

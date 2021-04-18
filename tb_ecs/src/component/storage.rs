@@ -2,10 +2,10 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::slice::Iter;
 
-use crate::{join, Component, Entity};
+use crate::{Component, Entity, join};
 
-pub struct ComponentStorage<T: Component> {
-    data: Vec<T>,
+pub struct ComponentStorage<C: Component> {
+    data: Vec<C>,
     entities: Vec<Entity>,
     entity_to_index: EntityToIndex,
 }
@@ -29,7 +29,7 @@ impl<T: Component> ComponentStorage<T> {
         self.data.is_empty()
     }
 
-    pub fn insert(&mut self, entity: Entity, elem: T) {
+    pub(crate) fn insert(&mut self, entity: Entity, elem: T) {
         match self.entity_to_index.entry(entity) {
             Entry::Occupied(occupied) => self.data[*occupied.get()] = elem,
             Entry::Vacant(vacant) => {
@@ -40,7 +40,7 @@ impl<T: Component> ComponentStorage<T> {
         }
     }
 
-    pub fn remove(&mut self, entity: Entity) {
+    pub(crate) fn remove(&mut self, entity: Entity) {
         if let Some(removed_index) = self.entity_to_index.remove(&entity) {
             let last_entity = *self.entities.last().unwrap();
             self.entities.swap_remove(removed_index);
