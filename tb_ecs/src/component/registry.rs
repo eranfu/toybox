@@ -1,8 +1,10 @@
 use std::any::TypeId;
+use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::lazy::SyncLazy;
 use std::marker::PhantomData;
 use std::ops::{Deref, Index};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{Component, Entity, World};
 
@@ -17,7 +19,7 @@ impl From<usize> for ComponentIndex {
 
 impl ComponentIndex {
     pub fn get<C: Component>() -> Self {
-        let registry = ComponentRegistry::get_instance();
+        let registry = ComponentRegistry::read();
         *registry
             .type_id_to_index
             .get(&ComponentTypeId::new::<C>())
@@ -56,21 +58,37 @@ pub struct ComponentRegistry {
 }
 
 impl ComponentRegistry {
-    pub fn add_component_infos(component_infos: Box<dyn Iterator<Item = &'static ComponentInfo>>) {}
+    pub fn add_component_infos(component_infos: Box<dyn Iterator<Item = &'static ComponentInfo>>) {
+        let cr: &mut ComponentRegistry = &mut Self::write();
+        let infos = &mut cr.infos;
+        let type_id_to_index = &mut cr.type_id_to_index;
+        for info in component_infos {
+            match type_id_to_index.entry(info.type_id) {
+                Entry::Occupied(occupied) => {
+                    let index = unsafe { infos.get_unchecked_mut(**occupied.get()) };
+                    *index = info;
+                }
+                Entry::Vacant(vacant) => {
+                    vacant.insert(ComponentIndex(infos.len()));
+                    infos.push(info);
+                }
+            }
+        }
+    }
 
     pub(crate) fn remove_from_world(
         component_index: ComponentIndex,
         world: &World,
         entity: Entity,
     ) {
-        let instance = Self::get_instance();
+        let instance = Self::read();
         instance.infos[component_index]
             .operation
             .remove_from_world(world, entity)
     }
 
-    fn get_instance() -> &'static ComponentRegistry {
-        static INSTANCE: SyncLazy<ComponentRegistry> = SyncLazy::new(|| {
+    fn get_instance() -> &'static RwLock<ComponentRegistry> {
+        static INSTANCE: SyncLazy<RwLock<ComponentRegistry>> = SyncLazy::new(|| {
             let mut instance = ComponentRegistry {
                 infos: vec![],
                 type_id_to_index: Default::default(),
@@ -82,9 +100,17 @@ impl ComponentRegistry {
                     .insert(info.type_id, ComponentIndex(instance.infos.len()));
                 instance.infos.push(info);
             }
-            instance
+            RwLock::new(instance)
         });
-        &*INSTANCE
+        &INSTANCE
+    }
+
+    fn write() -> RwLockWriteGuard<'static, ComponentRegistry> {
+        Self::get_instance().write().unwrap()
+    }
+
+    fn read() -> RwLockReadGuard<'static, ComponentRegistry> {
+        Self::get_instance().read().unwrap()
     }
 }
 

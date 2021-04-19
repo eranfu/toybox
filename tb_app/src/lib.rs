@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::process::Command;
+use std::time::Duration;
 
 use tb_core::error::*;
 use tb_ecs::World;
@@ -49,6 +50,7 @@ impl Application {
             //     world
             // }
             // world.up
+            std::thread::sleep(Duration::from_secs_f32(1f32 / 30f32))
         }
     }
 }
@@ -57,6 +59,7 @@ impl Default for Application {
     fn default() -> Self {
         let mut method = LaunchMethod::Archive;
         let mut args = std::env::args();
+        args.next();
         while let Some(arg) = args.next() {
             match arg.as_str() {
                 "--project" | "-p" => {

@@ -43,17 +43,7 @@ impl LibPartner for Box<dyn Plugin> {
         let plugin: Box<dyn Plugin> = plugin_create();
         println!("Loaded plugin: {}", plugin.name());
         plugin.on_load();
-        // SystemRegistry::add_system_infos(plugin.system_infos());
-
-        for system in plugin.system_infos() {
-            println!(
-                "add_system_infos. plugin: {} address: {}, type_id: {:?}, name: {}",
-                plugin.name(),
-                system as *const _ as usize,
-                system.system_type_id(),
-                system.name()
-            );
-        }
+        SystemRegistry::add_system_infos(plugin.system_infos());
         ComponentRegistry::add_component_infos(plugin.component_infos());
         Ok(plugin)
     }

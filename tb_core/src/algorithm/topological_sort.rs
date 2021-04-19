@@ -1,5 +1,5 @@
-use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet, LinkedList};
+use std::collections::hash_map::Entry;
 use std::hash::Hash;
 
 use crate::error::*;
@@ -20,6 +20,10 @@ pub struct TopologicalGraph<T: Eq + Hash + Clone> {
 }
 
 impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
+    pub fn clear(&mut self) {
+        self.nodes.clear()
+    }
+
     pub fn add_item(&mut self, item: T) {
         self.nodes.entry(item).or_insert_with_key(|item| Node {
             item: item.clone(),

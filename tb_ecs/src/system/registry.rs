@@ -2,107 +2,150 @@ use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::lazy::SyncLazy;
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use tb_core::algorithm::topological_sort::VisitorWithFlag;
+use tb_core::algorithm::topological_sort::{TopologicalGraph, VisitorWithFlag};
 
-use crate::*;
 use crate::scheduler::Runnable;
 use crate::world::ResourceId;
+use crate::*;
 
 pub struct SystemRegistry {
-    systems: Vec<&'static SystemInfo>,
+    systems: HashMap<TypeId, &'static SystemInfo>,
     resources_info: HashMap<ResourceId, ResourceInfo>,
     system_topological_graph:
         tb_core::algorithm::topological_sort::TopologicalGraph<&'static SystemInfo>,
+    systems_changed: bool,
 }
 
 impl SystemRegistry {
-    pub fn add_system_infos(infos: inventory::iter<SystemInfo>) {}
-
-    pub fn systems() -> VisitorWithFlag<'static, &'static SystemInfo, usize> {
-        SystemRegistry::get_instance()
-            .system_topological_graph
-            .visit_with_flag()
+    pub fn add_system_infos(infos: Box<dyn Iterator<Item = &'static SystemInfo>>) {
+        let mut sr = Self::write();
+        sr.systems_changed = true;
+        let mut systems = &mut sr.systems;
+        for info in infos {
+            systems.insert(info.system_type_id(), info);
+        }
     }
 
-    fn get_instance() -> &'static SystemRegistry {
-        static SYSTEM_REGISTRY: SyncLazy<SystemRegistry> = SyncLazy::new(|| {
+    pub fn systems() -> (
+        VisitorWithFlag<'static, &'static SystemInfo, usize>,
+        RwLockReadGuard<'static, SystemRegistry>,
+    ) {
+        let sr = SystemRegistry::read();
+        let sr = if sr.systems_changed {
+            drop(sr);
+            let mut sr = Self::write();
+            sr.refresh();
+            drop(sr);
+            Self::read()
+        } else {
+            sr
+        };
+        let graph: &TopologicalGraph<&'static SystemInfo> =
+            unsafe { std::mem::transmute(&sr.system_topological_graph) };
+        (graph.visit_with_flag(), sr)
+    }
+
+    fn get_instance() -> &'static RwLock<SystemRegistry> {
+        static SYSTEM_REGISTRY: SyncLazy<RwLock<SystemRegistry>> = SyncLazy::new(|| {
             let mut registry = SystemRegistry {
                 systems: Default::default(),
                 resources_info: Default::default(),
                 system_topological_graph: Default::default(),
+                systems_changed: true,
             };
 
             for system_info in inventory::iter::<SystemInfo> {
-                registry.systems.push(system_info);
+                registry
+                    .systems
+                    .insert(system_info.system_type_id(), system_info);
             }
 
-            let resources_info = &mut registry.resources_info;
-            registry.systems.iter().for_each(|system_info| {
-                system_info
-                    .reads_before_write
-                    .iter()
-                    .for_each(|resource_id| {
-                        resources_info
-                            .entry(*resource_id)
-                            .or_insert_with(ResourceInfo::default)
-                            .read_before_write_systems
-                            .insert(system_info);
-                    });
-                system_info.writes.iter().for_each(|resource_id| {
+            RwLock::new(registry)
+        });
+
+        &SYSTEM_REGISTRY
+    }
+
+    fn write() -> RwLockWriteGuard<'static, SystemRegistry> {
+        Self::get_instance().write().unwrap()
+    }
+    fn read() -> RwLockReadGuard<'static, SystemRegistry> {
+        Self::get_instance().read().unwrap()
+    }
+
+    fn refresh(&mut self) {
+        if !self.systems_changed {
+            return;
+        }
+
+        self.systems_changed = false;
+
+        let resources_info = &mut self.resources_info;
+        resources_info.clear();
+        self.systems.values().for_each(|system_info| {
+            system_info
+                .reads_before_write
+                .iter()
+                .for_each(|resource_id| {
                     resources_info
                         .entry(*resource_id)
                         .or_insert_with(ResourceInfo::default)
-                        .write_systems
+                        .read_before_write_systems
                         .insert(system_info);
                 });
-                system_info
-                    .reads_after_write
+            system_info.writes.iter().for_each(|resource_id| {
+                resources_info
+                    .entry(*resource_id)
+                    .or_insert_with(ResourceInfo::default)
+                    .write_systems
+                    .insert(system_info);
+            });
+            system_info
+                .reads_after_write
+                .iter()
+                .for_each(|resource_id| {
+                    resources_info
+                        .entry(*resource_id)
+                        .or_insert_with(ResourceInfo::default)
+                        .read_after_write_systems
+                        .insert(system_info);
+                });
+        });
+
+        let graph = &mut self.system_topological_graph;
+        graph.clear();
+        self.systems.values().for_each(|system_info| {
+            graph.add_item(system_info);
+            system_info.writes.iter().for_each(|write_resource| {
+                let write_resource_info = resources_info.get(write_resource).unwrap();
+                write_resource_info
+                    .read_before_write_systems
                     .iter()
-                    .for_each(|resource_id| {
-                        resources_info
-                            .entry(*resource_id)
-                            .or_insert_with(ResourceInfo::default)
-                            .read_after_write_systems
-                            .insert(system_info);
+                    .for_each(|read_before_write_system| {
+                        graph.add_dependency(system_info, read_before_write_system);
+                    });
+                write_resource_info
+                    .read_after_write_systems
+                    .iter()
+                    .for_each(|read_after_write_system| {
+                        graph.add_dependency(read_after_write_system, system_info);
                     });
             });
-
-            let graph = &mut registry.system_topological_graph;
-            registry.systems.iter().for_each(|system_info| {
-                graph.add_item(system_info);
-                system_info.writes.iter().for_each(|write_resource| {
-                    let write_resource_info = resources_info.get(write_resource).unwrap();
-                    write_resource_info
-                        .read_before_write_systems
-                        .iter()
-                        .for_each(|read_before_write_system| {
-                            graph.add_dependency(system_info, read_before_write_system);
-                        });
-                    write_resource_info
-                        .read_after_write_systems
-                        .iter()
-                        .for_each(|read_after_write_system| {
-                            graph.add_dependency(read_after_write_system, system_info);
-                        });
-                });
-            });
-
-            registry.systems.iter().for_each(|system_info| {
-                system_info.writes.iter().for_each(|write_resource| {
-                    let write_resource_info = resources_info.get(write_resource).unwrap();
-                    write_resource_info
-                        .write_systems
-                        .iter()
-                        .for_each(|write_system| {
-                            graph.add_dependency_if_non_inverse(write_system, system_info);
-                        })
-                });
-            });
-
-            registry
         });
-        &*SYSTEM_REGISTRY
+
+        self.systems.values().for_each(|system_info| {
+            system_info.writes.iter().for_each(|write_resource| {
+                let write_resource_info = resources_info.get(write_resource).unwrap();
+                write_resource_info
+                    .write_systems
+                    .iter()
+                    .for_each(|write_system| {
+                        graph.add_dependency_if_non_inverse(write_system, system_info);
+                    })
+            });
+        });
     }
 }
 
@@ -131,8 +174,7 @@ impl SystemInfo {
         let name = std::any::type_name::<S>();
         println!(
             "new system info. system type id: {:?}, name: {}",
-            type_id,
-            name
+            type_id, name
         );
 
         Self {
@@ -188,12 +230,12 @@ mod tests {
     #[test]
     fn it_works() {
         let mut has = false;
-        for _x in SystemRegistry::systems() {
+        for _x in SystemRegistry::systems().0 {
             has = true;
         }
         assert!(has);
         let mut has = false;
-        for _x in SystemRegistry::systems() {
+        for _x in SystemRegistry::systems().0 {
             has = true;
         }
         assert!(has);
