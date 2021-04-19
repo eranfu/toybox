@@ -1,12 +1,13 @@
+use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::lazy::SyncLazy;
 
 use tb_core::algorithm::topological_sort::VisitorWithFlag;
 
+use crate::*;
 use crate::scheduler::Runnable;
 use crate::world::ResourceId;
-use crate::*;
 
 pub struct SystemRegistry {
     systems: Vec<&'static SystemInfo>,
@@ -113,7 +114,8 @@ pub struct ResourceInfo {
 }
 
 pub struct SystemInfo {
-    name: String,
+    type_id: TypeId,
+    name: &'static str,
     reads_before_write: Vec<ResourceId>,
     reads_after_write: Vec<ResourceId>,
     writes: Vec<ResourceId>,
@@ -125,14 +127,17 @@ impl SystemInfo {
     where
         for<'r> S: 'static + std::default::Default + System<'r>,
     {
+        let type_id = std::any::TypeId::of::<S>();
+        let name = std::any::type_name::<S>();
         println!(
             "new system info. system type id: {:?}, name: {}",
-            std::any::TypeId::of::<S>(),
-            std::any::type_name::<S>()
+            type_id,
+            name
         );
 
         Self {
-            name: std::any::type_name::<S>().into(),
+            type_id,
+            name,
             reads_before_write: S::SystemData::reads_before_write(),
             reads_after_write: S::SystemData::reads_after_write(),
             writes: S::SystemData::writes(),
@@ -140,8 +145,12 @@ impl SystemInfo {
         }
     }
 
-    pub fn name(&self) -> &String {
-        &self.name
+    pub fn name(&self) -> &str {
+        self.name
+    }
+
+    pub fn system_type_id(&self) -> TypeId {
+        self.type_id
     }
 }
 

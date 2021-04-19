@@ -47,9 +47,10 @@ impl LibPartner for Box<dyn Plugin> {
 
         for system in plugin.system_infos() {
             println!(
-                "add_system_infos. plugin: {} address: {}, name: {}",
+                "add_system_infos. plugin: {} address: {}, type_id: {:?}, name: {}",
                 plugin.name(),
                 system as *const _ as usize,
+                system.system_type_id(),
                 system.name()
             );
         }

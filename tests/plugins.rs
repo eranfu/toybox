@@ -38,8 +38,9 @@ mod load_ecs_info {
 
         for system in inventory::iter::<SystemInfo> {
             println!(
-                "lod_ecs_info system. address: {}, name: {}",
+                "lod_ecs_info system. address: {}, type_id: {:?}, name: {}",
                 system as *const _ as usize,
+                system.system_type_id(),
                 system.name()
             );
         }
