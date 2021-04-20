@@ -8,3 +8,6 @@ edition = "2018"
 
 [dependencies]
 error-chain = "0.12.4"
+
+[dev-dependencies]
+rand = "0.8.3"
