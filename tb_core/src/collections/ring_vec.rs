@@ -1,13 +1,34 @@
+use std::cmp::Ordering;
+use std::hash::{Hash, Hasher};
 use std::mem::MaybeUninit;
+use std::ops::Index;
 use std::ptr;
 
 pub struct RingVec<T> {
     buf: Vec<MaybeUninit<T>>,
     start: usize,
     len: usize,
+    pop_counter: u64,
 }
 
 impl<T> RingVec<T> {
+    pub fn iter_from_cursor(&self, from_cursor: &RingCursor) -> Option<IterFromCursor<T>> {
+        self.cursor_to_index(from_cursor)
+            .map(|index| IterFromCursor::new(index, self))
+    }
+
+    pub fn end_cursor(&self) -> RingCursor {
+        RingCursor {
+            pop_counter: self.pop_counter,
+            index: self.len,
+        }
+    }
+
+    pub fn get_by_cursor(&self, cursor: &RingCursor) -> Option<&T> {
+        self.cursor_to_index(cursor)
+            .and_then(|index| self.get_by_index(index))
+    }
+
     pub fn push_back(&mut self, value: T) {
         self.reserve(1);
         unsafe {
@@ -28,6 +49,7 @@ impl<T> RingVec<T> {
                 let start = self.buf.as_ptr().add(self.start);
                 self.start = (self.start + 1) % self.buf.len();
                 self.len -= 1;
+                self.pop_counter += 1;
                 Some(ptr::read(start).assume_init())
             }
         }
@@ -56,6 +78,24 @@ impl<T> RingVec<T> {
             }
         }
     }
+
+    fn get_by_index(&self, index: usize) -> Option<&T> {
+        if index >= self.len {
+            None
+        } else {
+            let index = (self.start + index) % self.buf.len();
+            Some(unsafe { (self.buf[index]).assume_init_ref() })
+        }
+    }
+
+    fn cursor_to_index(&self, cursor: &RingCursor) -> Option<usize> {
+        let cursor = cursor.cursor();
+        if cursor < self.pop_counter {
+            None
+        } else {
+            Some((cursor - self.pop_counter) as usize)
+        }
+    }
 }
 
 impl<T> Default for RingVec<T> {
@@ -64,6 +104,7 @@ impl<T> Default for RingVec<T> {
             buf: vec![],
             start: 0,
             len: 0,
+            pop_counter: 0,
         }
     }
 }
@@ -80,9 +121,86 @@ impl<T> Drop for RingVec<T> {
     }
 }
 
+#[derive(Copy, Clone)]
+pub struct RingCursor {
+    pop_counter: u64,
+    index: usize,
+}
+
+impl RingCursor {
+    fn cursor(&self) -> u64 {
+        self.pop_counter + self.index as u64
+    }
+}
+
+impl PartialEq for RingCursor {
+    fn eq(&self, other: &Self) -> bool {
+        self.cursor().eq(&other.cursor())
+    }
+}
+
+impl Eq for RingCursor {}
+
+impl PartialOrd for RingCursor {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for RingCursor {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.cursor().cmp(&other.cursor())
+    }
+}
+
+impl Hash for RingCursor {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.cursor().hash(state)
+    }
+}
+
+impl<T> Index<RingCursor> for RingVec<T> {
+    type Output = T;
+
+    fn index(&self, index: RingCursor) -> &Self::Output {
+        self.get_by_cursor(&index).unwrap()
+    }
+}
+
+pub struct IterFromCursor<'r, T> {
+    cur: usize,
+    ring_vec: &'r RingVec<T>,
+}
+
+impl<'r, T> IterFromCursor<'r, T> {
+    fn new(from_index: usize, ring_vec: &'r RingVec<T>) -> Self {
+        Self {
+            cur: from_index,
+            ring_vec,
+        }
+    }
+}
+
+impl<'r, T> Iterator for IterFromCursor<'r, T> {
+    type Item = &'r T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.ring_vec.get_by_index(self.cur) {
+            None => None,
+            cur @ Some(_) => {
+                self.cur += 1;
+                cur
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::collections::RingVec;
+    use rand::distributions::{Distribution, Standard};
+    use rand::Rng;
+
+    use crate::collections::ring_vec::RingVec;
 
     static mut DROP_HISTORY: Vec<i32> = vec![];
 
@@ -97,6 +215,27 @@ mod tests {
         }
     }
 
+    enum RandomOp {
+        Push,
+        Pop,
+        GetCursor,
+        CheckCursor,
+    }
+
+    impl Distribution<RandomOp> for Standard {
+        fn sample<R: Rng + ?Sized>(&self, rng: &mut R) -> RandomOp {
+            match rng.next_u32() % 4 {
+                0 => RandomOp::Push,
+                1 => RandomOp::Pop,
+                2 => RandomOp::GetCursor,
+                3 => RandomOp::CheckCursor,
+                _ => {
+                    unreachable!()
+                }
+            }
+        }
+    }
+
     #[test]
     fn it_works() {
         const TEST_NUM: i32 = 10000;
@@ -104,16 +243,23 @@ mod tests {
         let mut pop_cursor = 0;
         let mut push_cursor = 0;
         while pop_cursor < TEST_NUM {
-            if rand::random() {
-                if push_cursor < TEST_NUM {
-                    ring.push_back(Info(push_cursor));
-                    push_cursor += 1;
+            match rand::random::<RandomOp>() {
+                RandomOp::Push => {
+                    if push_cursor < TEST_NUM {
+                        ring.push_back(Info(push_cursor));
+                        push_cursor += 1;
+                    }
                 }
-            } else if pop_cursor < push_cursor {
-                assert_eq!(ring.pop_front(), Some(Info(pop_cursor)));
-                pop_cursor += 1;
-            } else {
-                assert_eq!(ring.pop_front(), None);
+                RandomOp::Pop => {
+                    if pop_cursor < push_cursor {
+                        assert_eq!(ring.pop_front(), Some(Info(pop_cursor)));
+                        pop_cursor += 1;
+                    } else {
+                        assert_eq!(ring.pop_front(), None);
+                    }
+                }
+                RandomOp::GetCursor => {}
+                RandomOp::CheckCursor => {}
             }
         }
         assert_eq!(ring.pop_front(), None);

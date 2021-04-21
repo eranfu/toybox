@@ -67,7 +67,7 @@ impl<T> Runnable for T
 where
     for<'r> T: 'static + System<'r>,
 {
-    fn run(&mut self, world: &World) {
+    pub fn run(&mut self, world: &World) {
         self.run(T::SystemData::fetch(world));
     }
 }

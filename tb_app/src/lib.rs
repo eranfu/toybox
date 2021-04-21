@@ -3,7 +3,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use tb_core::error::*;
-use tb_ecs::World;
+use tb_ecs::{SystemRegistry, World};
 use tb_engine::level::LevelManager;
 use tb_plugin::PluginManager;
 
@@ -21,8 +21,14 @@ pub struct Application {
 }
 
 impl Application {
-    pub fn run(&mut self) -> Result<()> {
+    pub fn run() -> Result<()> {
+        let mut app = Self::default();
         let mut world = World::default();
+        app.setup_project(&mut world);
+        app.main_loop(&mut world);
+    }
+
+    fn setup_project(&mut self, world: &mut World) -> Result<()> {
         let plugin_manager: &mut PluginManager = world.insert(PluginManager::default);
         if let LaunchMethod::Project { project_dir } = &self.method {
             if !project_dir.exists() {
@@ -43,7 +49,12 @@ impl Application {
             plugin_manager.add_plugin(project_dir.file_name().unwrap().to_str().unwrap())
         }
 
+        Ok(())
+    }
+
+    fn main_loop(&mut self, world: &mut World) {
         loop {
+            self.prepare_systems(world);
             let _level_manager: &mut LevelManager = world.insert(LevelManager::default);
             // world.insert_components()
             // if let Some(pending_level) = level_manager.pending_level.take() {
@@ -53,6 +64,8 @@ impl Application {
             std::thread::sleep(Duration::from_secs_f32(1f32 / 30f32))
         }
     }
+
+    fn prepare_systems(&mut self, world: &mut World) {}
 }
 
 impl Default for Application {

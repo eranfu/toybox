@@ -22,7 +22,7 @@ impl SystemRegistry {
     pub fn add_system_infos(infos: Box<dyn Iterator<Item = &'static SystemInfo>>) {
         let mut sr = Self::write();
         sr.systems_changed = true;
-        let mut systems = &mut sr.systems;
+        let systems = &mut sr.systems;
         for info in infos {
             systems.insert(info.system_type_id(), info);
         }
