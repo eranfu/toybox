@@ -24,8 +24,9 @@ impl Application {
     pub fn run() -> Result<()> {
         let mut app = Self::default();
         let mut world = World::default();
-        app.setup_project(&mut world);
+        app.setup_project(&mut world)?;
         app.main_loop(&mut world);
+        Ok(())
     }
 
     fn setup_project(&mut self, world: &mut World) -> Result<()> {

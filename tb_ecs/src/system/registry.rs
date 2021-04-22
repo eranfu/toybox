@@ -5,6 +5,7 @@ use std::lazy::SyncLazy;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use tb_core::algorithm::topological_sort::{TopologicalGraph, VisitorWithFlag};
+use tb_core::event_channel::{EventChannel, ReaderHandle};
 
 use crate::scheduler::Runnable;
 use crate::world::ResourceId;
@@ -15,13 +16,14 @@ pub struct SystemRegistry {
     resources_info: HashMap<ResourceId, ResourceInfo>,
     system_topological_graph:
         tb_core::algorithm::topological_sort::TopologicalGraph<&'static SystemInfo>,
-    systems_changed: bool,
+    system_changed_events: EventChannel<()>,
+    system_changed_reader: ReaderHandle,
 }
 
 impl SystemRegistry {
     pub fn add_system_infos(infos: Box<dyn Iterator<Item = &'static SystemInfo>>) {
         let mut sr = Self::write();
-        sr.systems_changed = true;
+        sr.system_changed_events.push(());
         let systems = &mut sr.systems;
         for info in infos {
             systems.insert(info.system_type_id(), info);
@@ -33,7 +35,7 @@ impl SystemRegistry {
         RwLockReadGuard<'static, SystemRegistry>,
     ) {
         let sr = SystemRegistry::read();
-        let sr = if sr.systems_changed {
+        let sr = if sr.system_changed_events.read_any(&sr.system_changed_reader) {
             drop(sr);
             let mut sr = Self::write();
             sr.refresh();
@@ -49,11 +51,14 @@ impl SystemRegistry {
 
     fn get_instance() -> &'static RwLock<SystemRegistry> {
         static SYSTEM_REGISTRY: SyncLazy<RwLock<SystemRegistry>> = SyncLazy::new(|| {
+            let mut system_changed_events = EventChannel::default();
+            let system_changed_reader = system_changed_events.register();
             let mut registry = SystemRegistry {
                 systems: Default::default(),
                 resources_info: Default::default(),
                 system_topological_graph: Default::default(),
-                systems_changed: true,
+                system_changed_events,
+                system_changed_reader,
             };
 
             for system_info in inventory::iter::<SystemInfo> {
@@ -62,6 +67,7 @@ impl SystemRegistry {
                     .insert(system_info.system_type_id(), system_info);
             }
 
+            registry.system_changed_events.push(());
             RwLock::new(registry)
         });
 
@@ -76,12 +82,6 @@ impl SystemRegistry {
     }
 
     fn refresh(&mut self) {
-        if !self.systems_changed {
-            return;
-        }
-
-        self.systems_changed = false;
-
         let resources_info = &mut self.resources_info;
         resources_info.clear();
         self.systems.values().for_each(|system_info| {

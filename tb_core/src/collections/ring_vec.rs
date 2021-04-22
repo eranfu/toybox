@@ -1,5 +1,4 @@
-use std::cmp::Ordering;
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::mem::MaybeUninit;
 use std::ops::Index;
 use std::ptr;
@@ -12,19 +11,28 @@ pub struct RingVec<T> {
 }
 
 impl<T> RingVec<T> {
-    pub fn iter_from_cursor(&self, from_cursor: &RingCursor) -> Option<IterFromCursor<T>> {
+    pub fn clear(&mut self) {
+        self.remove_to_index(self.len);
+    }
+
+    pub fn iter_from_cursor(&self, from_cursor: RingCursor) -> Option<IterFromCursor<T>> {
         self.cursor_to_index(from_cursor)
             .map(|index| IterFromCursor::new(index, self))
     }
 
-    pub fn end_cursor(&self) -> RingCursor {
-        RingCursor {
-            pop_counter: self.pop_counter,
-            index: self.len,
+    pub fn remove_to_cursor(&mut self, to_cursor: RingCursor) {
+        if let Some(index) = self.cursor_to_index(to_cursor) {
+            self.remove_to_index(index);
         }
     }
 
-    pub fn get_by_cursor(&self, cursor: &RingCursor) -> Option<&T> {
+    pub fn end_cursor(&self) -> RingCursor {
+        RingCursor {
+            cursor: self.pop_counter + self.len as u64,
+        }
+    }
+
+    pub fn get_by_cursor(&self, cursor: RingCursor) -> Option<&T> {
         self.cursor_to_index(cursor)
             .and_then(|index| self.get_by_index(index))
     }
@@ -88,8 +96,23 @@ impl<T> RingVec<T> {
         }
     }
 
-    fn cursor_to_index(&self, cursor: &RingCursor) -> Option<usize> {
-        let cursor = cursor.cursor();
+    fn remove_to_index(&mut self, to_index: usize) {
+        let to_index = to_index.min(self.len);
+        if to_index == 0 {
+            return;
+        }
+        for i in 0..to_index {
+            let i = (self.start + i) % self.buf.len();
+            unsafe {
+                self.buf[i].assume_init_drop();
+            }
+        }
+        self.start = (self.start + to_index) % self.buf.len();
+        self.len -= to_index;
+    }
+
+    fn cursor_to_index(&self, cursor: RingCursor) -> Option<usize> {
+        let cursor = cursor.cursor;
         if cursor < self.pop_counter {
             None
         } else {
@@ -111,59 +134,23 @@ impl<T> Default for RingVec<T> {
 
 impl<T> Drop for RingVec<T> {
     fn drop(&mut self) {
+        self.clear();
         unsafe {
-            for i in 0..self.len {
-                let i = (self.start + i) % self.buf.len();
-                self.buf[i].assume_init_drop();
-            }
             self.buf.set_len(0);
         }
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub struct RingCursor {
-    pop_counter: u64,
-    index: usize,
-}
-
-impl RingCursor {
-    fn cursor(&self) -> u64 {
-        self.pop_counter + self.index as u64
-    }
-}
-
-impl PartialEq for RingCursor {
-    fn eq(&self, other: &Self) -> bool {
-        self.cursor().eq(&other.cursor())
-    }
-}
-
-impl Eq for RingCursor {}
-
-impl PartialOrd for RingCursor {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for RingCursor {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.cursor().cmp(&other.cursor())
-    }
-}
-
-impl Hash for RingCursor {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.cursor().hash(state)
-    }
+    cursor: u64,
 }
 
 impl<T> Index<RingCursor> for RingVec<T> {
     type Output = T;
 
     fn index(&self, index: RingCursor) -> &Self::Output {
-        self.get_by_cursor(&index).unwrap()
+        self.get_by_cursor(index).unwrap()
     }
 }
 

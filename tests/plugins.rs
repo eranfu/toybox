@@ -1,21 +1,3 @@
-use std::time::Duration;
-
-use toybox::*;
-
-error_chain! {}
-
-#[test]
-fn hot_reload() {
-    let mut plugin_manager = PluginManager::default();
-    plugin_manager.add_plugin("script_ts");
-    plugin_manager.add_plugin("example_pong");
-
-    for _i in 0..100 {
-        plugin_manager.update();
-        std::thread::sleep(Duration::from_millis(100));
-    }
-}
-
 mod load_ecs_info {
     use toybox::*;
 
