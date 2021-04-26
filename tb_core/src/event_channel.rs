@@ -1,21 +1,8 @@
-use std::ops::Deref;
-use std::sync::atomic::AtomicU64;
-use std::sync::{Arc, RwLock, Weak};
-
-use errors::*;
+use std::alloc::{Allocator, Global, Layout};
+use std::ptr::NonNull;
+use std::sync::atomic::{AtomicU64, AtomicU8, Ordering};
 
 use crate::collections::ring_vec::{IterFromCursor, RingCursor, RingVec};
-
-mod errors {
-    pub use crate::error::*;
-
-    error_chain! {
-        errors {
-            ReaderChannelIdNotMatched
-            IncorrectCursor
-        }
-    }
-}
 
 pub struct EventChannel<E> {
     #[cfg(debug_assertions)]
@@ -26,10 +13,12 @@ pub struct EventChannel<E> {
 
 impl<E> EventChannel<E> {
     pub fn register(&mut self) -> ReaderHandle {
-        let reader = Arc::new(RwLock::new(Reader {
+        let reader = Box::new(Reader {
+            weak_count: AtomicU8::new(2),
             cursor: self.events.end_cursor(),
-        }));
-        self.readers.push(WeakReader(Arc::downgrade(&reader)));
+        });
+        let reader = NonNull::from(Box::leak(reader));
+        self.readers.push(WeakReader(reader));
         ReaderHandle {
             reader,
             #[cfg(debug_assertions)]
@@ -42,38 +31,38 @@ impl<E> EventChannel<E> {
         self.events.push_back(e);
     }
 
-    pub fn read(&self, reader: &ReaderHandle) -> IterFromCursor<'_, E> {
+    pub fn read(&self, reader: &mut ReaderHandle) -> IterFromCursor<'_, E> {
         #[cfg(debug_assertions)]
         assert_eq!(self.id, reader.channel_id);
 
-        let mut reader = reader.reader.deref().write().unwrap();
-        let iter = self.events.iter_from_cursor(reader.cursor).unwrap();
-        reader.cursor = self.events.end_cursor();
+        let cursor = &mut unsafe { reader.reader.as_mut() }.cursor;
+        let iter = self.events.iter_from_cursor(*cursor).unwrap();
+        *cursor = self.events.end_cursor();
         iter
     }
 
-    pub fn read_any(&self, reader: &ReaderHandle) -> bool {
+    pub fn read_any(&self, reader: &mut ReaderHandle) -> bool {
         let end = self.events.end_cursor();
-        let mut reader = reader.reader.deref().write().unwrap();
-        let any = reader.cursor < end;
-        reader.cursor = end;
+        let cursor = &mut unsafe { reader.reader.as_mut() }.cursor;
+        let any = *cursor < end;
+        *cursor = end;
         any
     }
 
     fn clean_zero_counted_reader(&mut self) {
-        let mut first: Option<Reader> = None;
+        let mut first: Option<RingCursor> = None;
         let mut i = 0;
         loop {
             if i < self.readers.len() {
-                let reader = &self.readers[i];
-                if let Some(reader) = reader.0.upgrade() {
-                    let reader = reader.deref().read().unwrap();
+                let reader = unsafe { self.readers[i].0.as_ref() };
+                if reader.weak_count.load(Ordering::Acquire) > 1 {
+                    let cursor = reader.cursor;
                     if let Some(f) = &first {
-                        if *reader < *f {
-                            first = Some(*reader)
+                        if cursor < *f {
+                            first = Some(cursor)
                         }
                     } else {
-                        first = Some(*reader)
+                        first = Some(cursor)
                     }
                     i += 1;
                 } else {
@@ -85,7 +74,7 @@ impl<E> EventChannel<E> {
         }
 
         if let Some(first) = first {
-            self.events.remove_to_cursor(first.cursor);
+            self.events.remove_to_cursor(first);
         } else {
             self.events.clear();
         }
@@ -105,16 +94,55 @@ impl<E> Default for EventChannel<E> {
     }
 }
 
-#[derive(Clone)]
 pub struct ReaderHandle {
     #[cfg(debug_assertions)]
     channel_id: u64,
-    reader: Arc<RwLock<Reader>>,
+    reader: NonNull<Reader>,
 }
 
-#[derive(Eq, PartialEq, Ord, PartialOrd, Copy, Clone)]
+struct WeakReader(NonNull<Reader>);
+
 struct Reader {
+    weak_count: AtomicU8,
     cursor: RingCursor,
 }
 
-struct WeakReader(Weak<RwLock<Reader>>);
+unsafe impl Send for ReaderHandle {}
+
+impl Drop for ReaderHandle {
+    fn drop(&mut self) {
+        WeakReader(self.reader);
+    }
+}
+
+unsafe impl Send for WeakReader {}
+
+impl Drop for WeakReader {
+    fn drop(&mut self) {
+        unsafe {
+            let reader = self.0.as_ref();
+            if reader.weak_count.fetch_sub(1, Ordering::Release) == 1 {
+                // Ensure that all access to the reader is visible
+                // when the memory is about to be released
+                reader.weak_count.load(Ordering::Acquire);
+
+                Global.deallocate(self.0.cast(), Layout::for_value_raw(self.0.as_ptr()))
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::event_channel::EventChannel;
+
+    #[test]
+    fn drop_works() {
+        let mut channel = EventChannel::default();
+        let reader = channel.register();
+        channel.push(());
+
+        drop(reader);
+        drop(channel);
+    }
+}

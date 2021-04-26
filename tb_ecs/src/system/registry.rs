@@ -2,7 +2,7 @@ use std::any::TypeId;
 use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::lazy::SyncLazy;
-use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+use std::sync::{Mutex, MutexGuard};
 
 use tb_core::algorithm::topological_sort::{TopologicalGraph, VisitorWithFlag};
 use tb_core::event_channel::{EventChannel, ReaderHandle};
@@ -22,7 +22,8 @@ pub struct SystemRegistry {
 
 impl SystemRegistry {
     pub fn add_system_infos(infos: Box<dyn Iterator<Item = &'static SystemInfo>>) {
-        let mut sr = Self::write();
+        let mut sr = Self::get_instance();
+        let sr = &mut sr;
         sr.system_changed_events.push(());
         let systems = &mut sr.systems;
         for info in infos {
@@ -32,25 +33,25 @@ impl SystemRegistry {
 
     pub fn systems() -> (
         VisitorWithFlag<'static, &'static SystemInfo, usize>,
-        RwLockReadGuard<'static, SystemRegistry>,
+        MutexGuard<'static, SystemRegistry>,
     ) {
-        let sr = SystemRegistry::read();
-        let sr = if sr.system_changed_events.read_any(&sr.system_changed_reader) {
-            drop(sr);
-            let mut sr = Self::write();
+        let mut sr_guard = SystemRegistry::get_instance();
+        let sr = &mut sr_guard;
+        let (events, reader) = sr.system_changed_events_and_reader();
+        if events.read_any(reader) {
             sr.refresh();
-            drop(sr);
-            Self::read()
-        } else {
-            sr
-        };
+        }
         let graph: &TopologicalGraph<&'static SystemInfo> =
             unsafe { std::mem::transmute(&sr.system_topological_graph) };
-        (graph.visit_with_flag(), sr)
+        (graph.visit_with_flag(), sr_guard)
     }
 
-    fn get_instance() -> &'static RwLock<SystemRegistry> {
-        static SYSTEM_REGISTRY: SyncLazy<RwLock<SystemRegistry>> = SyncLazy::new(|| {
+    fn system_changed_events_and_reader(&mut self) -> (&EventChannel<()>, &mut ReaderHandle) {
+        (&self.system_changed_events, &mut self.system_changed_reader)
+    }
+
+    fn get_instance() -> MutexGuard<'static, SystemRegistry> {
+        static SYSTEM_REGISTRY: SyncLazy<Mutex<SystemRegistry>> = SyncLazy::new(|| {
             let mut system_changed_events = EventChannel::default();
             let system_changed_reader = system_changed_events.register();
             let mut registry = SystemRegistry {
@@ -68,17 +69,10 @@ impl SystemRegistry {
             }
 
             registry.system_changed_events.push(());
-            RwLock::new(registry)
+            Mutex::new(registry)
         });
 
-        &SYSTEM_REGISTRY
-    }
-
-    fn write() -> RwLockWriteGuard<'static, SystemRegistry> {
-        Self::get_instance().write().unwrap()
-    }
-    fn read() -> RwLockReadGuard<'static, SystemRegistry> {
-        Self::get_instance().read().unwrap()
+        SYSTEM_REGISTRY.lock().unwrap()
     }
 
     fn refresh(&mut self) {
