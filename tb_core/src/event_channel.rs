@@ -28,6 +28,9 @@ impl<E> EventChannel<E> {
 
     pub fn push(&mut self, e: E) {
         self.clean_zero_counted_reader();
+        if self.readers.is_empty() {
+            return;
+        }
         self.events.push_back(e);
     }
 
@@ -143,6 +146,8 @@ mod tests {
         channel.push(());
 
         drop(reader);
+
+        channel.push(());
         drop(channel);
     }
 }
