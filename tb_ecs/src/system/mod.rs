@@ -21,12 +21,4 @@ mod tests {
 
         fn run(&mut self, _system_data: Self::SystemData) {}
     }
-
-    #[test]
-    fn empty_system_data() {
-        let mut scheduler = Scheduler::default();
-        scheduler.insert(TestSystem {});
-        let world = World::default();
-        scheduler.schedule(&world);
-    }
 }

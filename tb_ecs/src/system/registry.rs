@@ -4,10 +4,10 @@ use std::hash::{Hash, Hasher};
 use std::lazy::SyncLazy;
 use std::sync::{Mutex, MutexGuard};
 
-use tb_core::algorithm::topological_sort::{TopologicalGraph, VisitorWithFlag};
+use tb_core::algorithm::topological_sort::{TopologicalGraph, Visitor};
 use tb_core::event_channel::{EventChannel, ReaderHandle};
 
-use crate::scheduler::Runnable;
+use crate::scheduler::RunnableSystem;
 use crate::world::ResourceId;
 use crate::*;
 
@@ -32,7 +32,7 @@ impl SystemRegistry {
     }
 
     pub fn systems() -> (
-        VisitorWithFlag<'static, &'static SystemInfo, usize>,
+        Visitor<'static, &'static SystemInfo>,
         MutexGuard<'static, SystemRegistry>,
     ) {
         let mut sr_guard = SystemRegistry::get_instance();
@@ -43,7 +43,7 @@ impl SystemRegistry {
         }
         let graph: &TopologicalGraph<&'static SystemInfo> =
             unsafe { std::mem::transmute(&sr.system_topological_graph) };
-        (graph.visit_with_flag(), sr_guard)
+        (graph.visit(), sr_guard)
     }
 
     fn system_changed_events_and_reader(&mut self) -> (&EventChannel<()>, &mut ReaderHandle) {
@@ -156,7 +156,7 @@ pub struct SystemInfo {
     reads_before_write: Vec<ResourceId>,
     reads_after_write: Vec<ResourceId>,
     writes: Vec<ResourceId>,
-    create: fn() -> Box<dyn Runnable>,
+    create: fn() -> Box<dyn RunnableSystem>,
 }
 
 impl SystemInfo {

@@ -4,6 +4,7 @@ use std::ops::Not;
 pub use anti_components::*;
 pub use registry::*;
 pub use storage::*;
+use tb_core::event_channel::EventChannel;
 
 use crate::*;
 
@@ -230,6 +231,14 @@ impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
     }
 }
 
+pub struct ComponentsChangeEvent {}
+
+impl ComponentsChangeEvent {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
 impl World {
     pub fn fetch_components<C: Component>(&self) -> &ComponentStorage<C> {
         self.fetch()
@@ -241,6 +250,11 @@ impl World {
     }
 
     pub fn insert_components<C: Component>(&mut self) -> &mut ComponentStorage<C> {
+        if self.contains::<ComponentStorage<C>>() {
+            let components_change_event_channel = self.insert(EventChannel::default);
+            components_change_event_channel.push(ComponentsChangeEvent::new());
+        }
+
         self.insert(ComponentStorage::<C>::default)
     }
 }

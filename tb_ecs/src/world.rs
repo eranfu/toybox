@@ -52,6 +52,10 @@ impl World {
     pub fn fetch_mut<R: Resource>(&self) -> &mut R {
         self.try_fetch_mut().unwrap()
     }
+
+    pub fn contains<R: Resource>(&self) -> bool {
+        self.resources.contains_key(&ResourceId::new::<R>())
+    }
 }
 
 #[derive(Eq, PartialEq, Hash, Copy, Clone)]

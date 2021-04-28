@@ -1,71 +1,26 @@
-use std::cell::RefCell;
-
-use rayon::{ThreadPool, ThreadPoolBuilder};
-
 use crate::{System, SystemData, World};
 
 pub struct Scheduler {
-    thread_pool: ThreadPool,
-    stages: Vec<Stage>,
+    systems: Vec<Box<dyn RunnableSystem>>,
 }
 
 impl Scheduler {
-    pub(crate) fn insert<R: Runnable>(&mut self, runnable: R) {
-        self.stages
-            .push(Stage::new(self.thread_pool.current_num_threads() * 2));
-        let last_stage = self.stages.last_mut().unwrap();
-        last_stage.groups[0]
-            .runnable_list
-            .push(Box::new(RefCell::new(runnable)));
-    }
-
-    pub fn schedule(&self, world: &World) {
-        for stage in &self.stages {
-            for group in &stage.groups {
-                for runnable in &group.runnable_list {
-                    runnable.borrow_mut().run(world);
-                }
-            }
-        }
-    }
+    pub fn update(&self, world: &World) {}
 }
 
 impl Default for Scheduler {
     fn default() -> Self {
-        Self {
-            thread_pool: ThreadPoolBuilder::default().build().unwrap(),
-            stages: vec![],
-        }
+        Self { systems: vec![] }
     }
 }
 
-struct Stage {
-    groups: Vec<Group>,
-}
-
-#[derive(Default)]
-struct Group {
-    runnable_list: Vec<Box<RefCell<dyn Runnable>>>,
-}
-
-pub(crate) trait Runnable: 'static {
+pub(crate) trait RunnableSystem {
     fn run(&mut self, world: &World);
 }
 
-impl Stage {
-    fn new(group_num: usize) -> Self {
-        let mut groups = vec![];
-        groups.reserve(group_num);
-        for _i in 0..group_num {
-            groups.push(Group::default());
-        }
-        Self { groups }
-    }
-}
-
-impl<T> Runnable for T
+impl<T> RunnableSystem for T
 where
-    for<'r> T: 'static + System<'r>,
+    for<'r> T: System<'r>,
 {
     fn run(&mut self, world: &World) {
         self.run(T::SystemData::fetch(world));
@@ -105,22 +60,5 @@ mod tests {
             test.value = 30;
             assert_eq!(other.value, 100);
         }
-    }
-
-    #[test]
-    fn scheduler_works() {
-        let mut world = World::default();
-        let mut scheduler = Scheduler::default();
-        world.insert(|| TestResource { value: 10 });
-        world.insert(|| OtherResource { value: 100 });
-        assert_eq!(world.fetch::<TestResource>().value, 10);
-
-        scheduler.insert(TestSystem {});
-        scheduler.schedule(&world);
-        assert_eq!(world.fetch::<TestResource>().value, 20);
-
-        scheduler.insert(OtherSystem {});
-        scheduler.schedule(&world);
-        assert_eq!(world.fetch::<TestResource>().value, 30);
     }
 }
