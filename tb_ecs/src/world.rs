@@ -1,16 +1,19 @@
 use std::any::{Any, TypeId};
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::fmt::Debug;
 
-use tb_core::error::*;
+use errors::*;
 use tb_core::event_channel::EventChannel;
 
-error_chain! {
-    errors {
-        Fetch(resource_type_name: String) {
-            description("Failed to fetch resource"),
-            display("Failed to fetch resource. type_name: {}", resource_type_name),
+mod errors {
+    pub use tb_core::error::*;
+
+    error_chain! {
+        errors {
+            Fetch(resource_type_name: String) {
+                description("Failed to fetch resource"),
+                display("Failed to fetch resource. type_name: {}", resource_type_name),
+            }
         }
     }
 }
@@ -36,21 +39,21 @@ impl World {
             let components_change_event_channel = self.insert(EventChannel::default);
             components_change_event_channel.push(ResourcesChangeEvent::new());
         }
-        unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) }
+        self.fetch_mut()
     }
 
-    pub fn try_fetch<R: Resource>(&self) -> Result<&R> {
+    pub fn try_fetch<R: Resource>(&self) -> errors::Result<&R> {
         self.resources
             .get(&ResourceId::new::<R>())
             .map(|r| unsafe { &*(r.borrow().as_ref() as *const dyn Resource as *const R) })
-            .chain_err(|| ErrorKind::Fetch(std::any::type_name::<R>().into()))
+            .chain_err(|| errors::ErrorKind::Fetch(std::any::type_name::<R>().into()))
     }
 
-    pub fn try_fetch_mut<R: Resource>(&self) -> Result<&mut R> {
+    pub fn try_fetch_mut<R: Resource>(&self) -> errors::Result<&mut R> {
         self.resources
             .get(&ResourceId::new::<R>())
             .map(|r| unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) })
-            .chain_err(|| ErrorKind::Fetch(std::any::type_name::<R>().into()))
+            .chain_err(|| errors::ErrorKind::Fetch(std::any::type_name::<R>().into()))
     }
 
     pub fn fetch<R: Resource>(&self) -> &R {

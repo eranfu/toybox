@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::lazy::SyncLazy;
 use std::sync::{Mutex, MutexGuard};
 
-use tb_core::algorithm::topological_sort::{Iter, TopologicalGraph};
+use tb_core::algorithm::topological_sort::{Iter, Node, TopologicalGraph};
 use tb_core::event_channel::{EventChannel, ReaderHandle};
 
 use crate::scheduler::RunnableSystem;
@@ -31,7 +31,15 @@ impl SystemRegistry {
         }
     }
 
-    pub fn par_systems() -> ParSystems {}
+    pub fn par_iter() -> (
+        rayon::collections::hash_map::Iter<'static, &'static SystemInfo, Node<&'static SystemInfo>>,
+        MutexGuard<'static, SystemRegistry>,
+    ) {
+        let guard = Self::get_instance();
+        let instance: &SystemRegistry = &guard;
+        let iter = unsafe { std::mem::transmute(instance.system_topological_graph.par_iter()) };
+        (iter, guard)
+    }
 
     pub fn systems() -> (
         Iter<'static, &'static SystemInfo>,

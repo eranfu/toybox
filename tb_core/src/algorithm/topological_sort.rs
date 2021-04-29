@@ -1,18 +1,19 @@
 use std::collections::{HashMap, HashSet, LinkedList};
 use std::hash::Hash;
 
-use rayon::iter::plumbing::{Consumer, UnindexedConsumer};
-use rayon::iter::ParallelIterator;
+use rayon::prelude::*;
 
-use crate::error::*;
+mod errors {
+    use crate::error::*;
 
-error_chain! {
-    errors {
-        CircularDependency
+    error_chain! {
+        errors {
+            CircularDependency
+        }
     }
 }
 
-struct Node<T> {
+pub struct Node<T> {
     item: T,
     dependencies: HashSet<T>,
 }
@@ -65,10 +66,6 @@ impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
         self.add_dependency(a, b)
     }
 
-    pub fn par_iter(&self) -> ParIter<T> {
-        ParIter::new()
-    }
-
     pub fn iter(&self) -> Iter<T> {
         Iter::new(self)
     }
@@ -92,6 +89,12 @@ impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
         }
 
         false
+    }
+}
+
+impl<T: Eq + Hash + Clone + Sync> TopologicalGraph<T> {
+    pub fn par_iter(&self) -> rayon::collections::hash_map::Iter<'_, T, Node<T>> {
+        self.nodes.par_iter()
     }
 }
 
@@ -126,7 +129,7 @@ impl<'d, T: Eq + Hash + Clone> Iter<'d, T> {
 }
 
 impl<'d, T: Eq + Hash + Clone> Iterator for Iter<'d, T> {
-    type Item = Result<T>;
+    type Item = errors::Result<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.has_error {
@@ -157,7 +160,7 @@ impl<'d, T: Eq + Hash + Clone> Iterator for Iter<'d, T> {
                         .push_back((child_node.item.clone(), child_node.dependencies.iter()));
                 } else {
                     self.has_error = true;
-                    return Some(Err(ErrorKind::CircularDependency.into()));
+                    return Some(Err(errors::ErrorKind::CircularDependency.into()));
                 }
             } else {
                 break;
@@ -168,25 +171,6 @@ impl<'d, T: Eq + Hash + Clone> Iterator for Iter<'d, T> {
         self.visited.insert(current.clone());
         self.visiting_items.remove(&current);
         Some(Ok(current))
-    }
-}
-
-pub struct ParIter<T> {}
-
-impl<T> ParIter<T> {
-    fn new() -> Self {
-        Self {}
-    }
-}
-
-impl<T> ParallelIterator for ParIter<T> {
-    type Item = T;
-
-    fn drive_unindexed<C>(self, consumer: C) -> <C as Consumer<Self::Item>>::Result
-    where
-        C: UnindexedConsumer<Self::Item>,
-    {
-        todo!()
     }
 }
 

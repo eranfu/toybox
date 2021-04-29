@@ -1,4 +1,7 @@
+use std::ops::DerefMut;
 use std::sync::atomic::AtomicUsize;
+
+use rayon::prelude::*;
 
 use tb_core::event_channel::{EventChannel, ReaderHandle};
 
@@ -35,7 +38,10 @@ impl Scheduler {
     fn refresh_systems(&mut self, world: &mut World) {
         self.systems.clear();
         self.await_counter_cache.clear();
-        SystemRegistry::par_iter()
+        let mut iter = SystemRegistry::par_iter();
+        iter.0
+            .filter(|(&system_info, node)| true)
+            .for_each(|(&system_info, node)| {})
     }
 }
 
