@@ -4,12 +4,14 @@ use std::hash::{Hash, Hasher};
 use std::lazy::SyncLazy;
 use std::sync::{Mutex, MutexGuard};
 
+use rayon::prelude::*;
+
 use tb_core::algorithm::topological_sort::{Iter, Node, TopologicalGraph};
 use tb_core::event_channel::{EventChannel, ReaderHandle};
 
 use crate::scheduler::RunnableSystem;
 use crate::world::ResourceId;
-use crate::*;
+use crate::{System, SystemData, World};
 
 pub struct SystemRegistry {
     systems: HashMap<TypeId, &'static SystemInfo>,
@@ -197,6 +199,14 @@ impl SystemInfo {
 
     pub fn system_type_id(&self) -> TypeId {
         self.type_id
+    }
+
+    pub fn is_resource_matched(&self, world: &World) {
+        self.reads_after_write
+            .par_iter()
+            .chain(self.reads_before_write.par_iter())
+            .chain(self.writes.par_iter())
+            .all()
     }
 }
 

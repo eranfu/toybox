@@ -40,7 +40,9 @@ impl Scheduler {
         self.await_counter_cache.clear();
         let mut iter = SystemRegistry::par_iter();
         iter.0
-            .filter(|(&system_info, node)| true)
+            .filter(|(&system_info, node)| {
+                if system_info.is_resource_prepared
+            })
             .for_each(|(&system_info, node)| {})
     }
 }
