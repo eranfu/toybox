@@ -4,7 +4,7 @@ use std::hash::{Hash, Hasher};
 use std::lazy::SyncLazy;
 use std::sync::{Mutex, MutexGuard};
 
-use tb_core::algorithm::topological_sort::{TopologicalGraph, Visitor};
+use tb_core::algorithm::topological_sort::{Iter, TopologicalGraph};
 use tb_core::event_channel::{EventChannel, ReaderHandle};
 
 use crate::scheduler::RunnableSystem;
@@ -31,8 +31,10 @@ impl SystemRegistry {
         }
     }
 
+    pub fn par_systems() -> ParSystems {}
+
     pub fn systems() -> (
-        Visitor<'static, &'static SystemInfo>,
+        Iter<'static, &'static SystemInfo>,
         MutexGuard<'static, SystemRegistry>,
     ) {
         let mut sr_guard = SystemRegistry::get_instance();
@@ -43,7 +45,7 @@ impl SystemRegistry {
         }
         let graph: &TopologicalGraph<&'static SystemInfo> =
             unsafe { std::mem::transmute(&sr.system_topological_graph) };
-        (graph.visit(), sr_guard)
+        (graph.iter(), sr_guard)
     }
 
     fn system_changed_events_and_reader(&mut self) -> (&EventChannel<()>, &mut ReaderHandle) {

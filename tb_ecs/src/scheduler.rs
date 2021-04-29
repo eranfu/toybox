@@ -1,16 +1,41 @@
-use crate::{System, SystemData, World};
+use std::sync::atomic::AtomicUsize;
+
+use tb_core::event_channel::{EventChannel, ReaderHandle};
+
+use crate::{ResourcesChangeEvent, System, SystemData, SystemRegistry, World};
 
 pub struct Scheduler {
+    resources_change_event_reader: ReaderHandle,
     systems: Vec<Box<dyn RunnableSystem>>,
+    await_counter_cache: Vec<AtomicUsize>,
+    await_counter: Vec<AtomicUsize>,
+    dependents: Vec<Vec<usize>>,
 }
 
 impl Scheduler {
-    pub fn update(&self, world: &World) {}
-}
-
-impl Default for Scheduler {
-    fn default() -> Self {
-        Self { systems: vec![] }
+    pub fn new(world: &mut World) -> Self {
+        let channel: &mut EventChannel<ResourcesChangeEvent> = world.insert(Default::default);
+        let resources_change_event_reader = channel.register();
+        let mut scheduler = Self {
+            systems: vec![],
+            await_counter_cache: vec![],
+            await_counter: vec![],
+            resources_change_event_reader,
+            dependents: vec![],
+        };
+        scheduler.refresh_systems(world);
+        scheduler
+    }
+    pub fn update(&mut self, world: &mut World) {
+        let events: &mut EventChannel<ResourcesChangeEvent> = world.fetch_mut();
+        if events.read_any(&mut self.resources_change_event_reader) {
+            self.refresh_systems(world);
+        }
+    }
+    fn refresh_systems(&mut self, world: &mut World) {
+        self.systems.clear();
+        self.await_counter_cache.clear();
+        SystemRegistry::par_iter()
     }
 }
 

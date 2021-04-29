@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fmt::Debug;
 
 use tb_core::error::*;
+use tb_core::event_channel::EventChannel;
 
 error_chain! {
     errors {
@@ -23,10 +24,18 @@ pub struct World {
 
 impl World {
     pub fn insert<R: Resource>(&mut self, create: impl FnOnce() -> R) -> &mut R {
+        let mut is_new = false;
         let r = self
             .resources
             .entry(ResourceId::new::<R>())
-            .or_insert_with(|| RefCell::new(Box::new(create())));
+            .or_insert_with(|| {
+                is_new = true;
+                RefCell::new(Box::new(create()))
+            });
+        if is_new {
+            let components_change_event_channel = self.insert(EventChannel::default);
+            components_change_event_channel.push(ResourcesChangeEvent::new());
+        }
         unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) }
     }
 
@@ -74,6 +83,14 @@ impl ResourceId {
 pub trait Resource: 'static {}
 
 impl<R: Any> Resource for R {}
+
+pub struct ResourcesChangeEvent {}
+
+impl ResourcesChangeEvent {
+    fn new() -> Self {
+        Self {}
+    }
+}
 
 #[cfg(test)]
 mod tests {

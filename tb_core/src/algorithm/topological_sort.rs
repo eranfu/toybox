@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet, LinkedList};
 use std::hash::Hash;
 
+use rayon::iter::plumbing::{Consumer, UnindexedConsumer};
+use rayon::iter::ParallelIterator;
+
 use crate::error::*;
 
 error_chain! {
@@ -62,8 +65,12 @@ impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
         self.add_dependency(a, b)
     }
 
-    pub fn visit(&self) -> Visitor<T> {
-        Visitor::new(self)
+    pub fn par_iter(&self) -> ParIter<T> {
+        ParIter::new()
+    }
+
+    pub fn iter(&self) -> Iter<T> {
+        Iter::new(self)
     }
 
     fn is_dependent(&self, a: &T, b: &T) -> bool {
@@ -96,7 +103,7 @@ impl<T: Eq + Hash + Clone> Default for TopologicalGraph<T> {
     }
 }
 
-pub struct Visitor<'d, T: Eq + Hash + Clone> {
+pub struct Iter<'d, T: Eq + Hash + Clone> {
     graph: &'d TopologicalGraph<T>,
     visited: HashSet<T>,
     node_iter: std::collections::hash_map::Iter<'d, T, Node<T>>,
@@ -105,7 +112,7 @@ pub struct Visitor<'d, T: Eq + Hash + Clone> {
     has_error: bool,
 }
 
-impl<'d, T: Eq + Hash + Clone> Visitor<'d, T> {
+impl<'d, T: Eq + Hash + Clone> Iter<'d, T> {
     pub fn new(graph: &'d TopologicalGraph<T>) -> Self {
         Self {
             graph,
@@ -118,7 +125,7 @@ impl<'d, T: Eq + Hash + Clone> Visitor<'d, T> {
     }
 }
 
-impl<'d, T: Eq + Hash + Clone> Iterator for Visitor<'d, T> {
+impl<'d, T: Eq + Hash + Clone> Iterator for Iter<'d, T> {
     type Item = Result<T>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -164,6 +171,25 @@ impl<'d, T: Eq + Hash + Clone> Iterator for Visitor<'d, T> {
     }
 }
 
+pub struct ParIter<T> {}
+
+impl<T> ParIter<T> {
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+impl<T> ParallelIterator for ParIter<T> {
+    type Item = T;
+
+    fn drive_unindexed<C>(self, consumer: C) -> <C as Consumer<Self::Item>>::Result
+    where
+        C: UnindexedConsumer<Self::Item>,
+    {
+        todo!()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::algorithm::topological_sort::TopologicalGraph;
@@ -177,7 +203,7 @@ mod tests {
 
         let assert_result = vec![3, 2, 1];
         let mut result = vec![];
-        for e in t.visit() {
+        for e in t.iter() {
             let item = e.unwrap();
             result.push(item);
         }
@@ -192,7 +218,7 @@ mod tests {
         t.add_dependency(1, 3);
         t.add_dependency(2, 3);
         t.add_dependency(3, 1);
-        for e in t.visit() {
+        for e in t.iter() {
             let _item = e.unwrap();
         }
     }
