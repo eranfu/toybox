@@ -120,6 +120,8 @@ impl Drop for ReaderHandle {
 
 unsafe impl Send for WeakReader {}
 
+unsafe impl Sync for WeakReader {}
+
 impl Drop for WeakReader {
     fn drop(&mut self) {
         unsafe {

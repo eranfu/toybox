@@ -4,7 +4,7 @@ pub use registry::*;
 mod data;
 mod registry;
 
-pub trait System<'r> {
+pub trait System<'r>: Send {
     type SystemData: SystemData<'r>;
     fn run(&mut self, system_data: Self::SystemData);
 }

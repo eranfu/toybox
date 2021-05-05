@@ -4,7 +4,6 @@ use std::ops::Not;
 pub use anti_components::*;
 pub use registry::*;
 pub use storage::*;
-use tb_core::event_channel::EventChannel;
 
 use crate::*;
 
@@ -12,7 +11,7 @@ mod anti_components;
 pub(crate) mod registry;
 mod storage;
 
-pub trait Component: 'static + Sized + Clone {}
+pub trait Component: 'static + Sized + Clone + Sync {}
 
 pub trait EntityRef {
     fn for_each(&mut self, action: &mut impl FnMut(&mut Entity));

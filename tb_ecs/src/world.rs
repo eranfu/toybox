@@ -1,5 +1,5 @@
-use std::any::{Any, TypeId};
-use std::cell::RefCell;
+use std::any::TypeId;
+use std::cell::UnsafeCell;
 use std::collections::HashMap;
 
 use errors::*;
@@ -18,7 +18,11 @@ mod errors {
     }
 }
 
-type Resources = HashMap<ResourceId, RefCell<Box<dyn Resource>>>;
+struct ResourceCell(UnsafeCell<Box<dyn Resource>>);
+
+unsafe impl Sync for ResourceCell {}
+
+type Resources = HashMap<ResourceId, ResourceCell>;
 
 #[derive(Default)]
 pub struct World {
@@ -28,12 +32,11 @@ pub struct World {
 impl World {
     pub fn insert<R: Resource>(&mut self, create: impl FnOnce() -> R) -> &mut R {
         let mut is_new = false;
-        let r = self
-            .resources
+        self.resources
             .entry(ResourceId::new::<R>())
             .or_insert_with(|| {
                 is_new = true;
-                RefCell::new(Box::new(create()))
+                ResourceCell(UnsafeCell::new(Box::new(create())))
             });
         if is_new {
             let components_change_event_channel = self.insert(EventChannel::default);
@@ -45,14 +48,14 @@ impl World {
     pub fn try_fetch<R: Resource>(&self) -> errors::Result<&R> {
         self.resources
             .get(&ResourceId::new::<R>())
-            .map(|r| unsafe { &*(r.borrow().as_ref() as *const dyn Resource as *const R) })
+            .map(|r| unsafe { &*(r.0.get() as *const dyn Resource as *const R) })
             .chain_err(|| errors::ErrorKind::Fetch(std::any::type_name::<R>().into()))
     }
 
     pub fn try_fetch_mut<R: Resource>(&self) -> errors::Result<&mut R> {
         self.resources
             .get(&ResourceId::new::<R>())
-            .map(|r| unsafe { &mut *(r.borrow_mut().as_mut() as *mut dyn Resource as *mut R) })
+            .map(|r| unsafe { &mut *(r.0.get() as *mut dyn Resource as *mut R) })
             .chain_err(|| errors::ErrorKind::Fetch(std::any::type_name::<R>().into()))
     }
 
@@ -66,7 +69,11 @@ impl World {
     }
 
     pub fn contains<R: Resource>(&self) -> bool {
-        self.resources.contains_key(&ResourceId::new::<R>())
+        self.contains_id(&ResourceId::new::<R>())
+    }
+
+    pub fn contains_id(&self, id: &ResourceId) -> bool {
+        self.resources.contains_key(&id)
     }
 }
 
@@ -83,9 +90,9 @@ impl ResourceId {
     }
 }
 
-pub trait Resource: 'static {}
+pub trait Resource: 'static + Sync {}
 
-impl<R: Any> Resource for R {}
+impl<R: 'static + Sync> Resource for R {}
 
 pub struct ResourcesChangeEvent {}
 

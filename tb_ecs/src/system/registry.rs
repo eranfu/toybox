@@ -6,7 +6,7 @@ use std::sync::{Mutex, MutexGuard};
 
 use rayon::prelude::*;
 
-use tb_core::algorithm::topological_sort::{Iter, Node, TopologicalGraph};
+use tb_core::algorithm::topological_sort::TopologicalGraph;
 use tb_core::event_channel::{EventChannel, ReaderHandle};
 
 use crate::scheduler::RunnableSystem;
@@ -23,46 +23,7 @@ pub struct SystemRegistry {
 }
 
 impl SystemRegistry {
-    pub fn add_system_infos(infos: Box<dyn Iterator<Item = &'static SystemInfo>>) {
-        let mut sr = Self::get_instance();
-        let sr = &mut sr;
-        sr.system_changed_events.push(());
-        let systems = &mut sr.systems;
-        for info in infos {
-            systems.insert(info.system_type_id(), info);
-        }
-    }
-
-    pub fn par_iter() -> (
-        rayon::collections::hash_map::Iter<'static, &'static SystemInfo, Node<&'static SystemInfo>>,
-        MutexGuard<'static, SystemRegistry>,
-    ) {
-        let guard = Self::get_instance();
-        let instance: &SystemRegistry = &guard;
-        let iter = unsafe { std::mem::transmute(instance.system_topological_graph.par_iter()) };
-        (iter, guard)
-    }
-
-    pub fn systems() -> (
-        Iter<'static, &'static SystemInfo>,
-        MutexGuard<'static, SystemRegistry>,
-    ) {
-        let mut sr_guard = SystemRegistry::get_instance();
-        let sr = &mut sr_guard;
-        let (events, reader) = sr.system_changed_events_and_reader();
-        if events.read_any(reader) {
-            sr.refresh();
-        }
-        let graph: &TopologicalGraph<&'static SystemInfo> =
-            unsafe { std::mem::transmute(&sr.system_topological_graph) };
-        (graph.iter(), sr_guard)
-    }
-
-    fn system_changed_events_and_reader(&mut self) -> (&EventChannel<()>, &mut ReaderHandle) {
-        (&self.system_changed_events, &mut self.system_changed_reader)
-    }
-
-    fn get_instance() -> MutexGuard<'static, SystemRegistry> {
+    pub fn get_instance() -> MutexGuard<'static, SystemRegistry> {
         static SYSTEM_REGISTRY: SyncLazy<Mutex<SystemRegistry>> = SyncLazy::new(|| {
             let mut system_changed_events = EventChannel::default();
             let system_changed_reader = system_changed_events.register();
@@ -85,6 +46,32 @@ impl SystemRegistry {
         });
 
         SYSTEM_REGISTRY.lock().unwrap()
+    }
+
+    pub fn add_system_infos(infos: Box<dyn Iterator<Item = &'static SystemInfo>>) {
+        let mut sr = Self::get_instance();
+        let sr = &mut sr;
+        sr.system_changed_events.push(());
+        let systems = &mut sr.systems;
+        for info in infos {
+            systems.insert(info.system_type_id(), info);
+        }
+    }
+
+    pub fn systems(&mut self) -> &TopologicalGraph<&'static SystemInfo> {
+        self.check_changes();
+        &self.system_topological_graph
+    }
+
+    fn check_changes(&mut self) {
+        let (events, reader) = self.system_changed_events_and_reader();
+        if events.read_any(reader) {
+            self.refresh();
+        }
+    }
+
+    fn system_changed_events_and_reader(&mut self) -> (&EventChannel<()>, &mut ReaderHandle) {
+        (&self.system_changed_events, &mut self.system_changed_reader)
     }
 
     fn refresh(&mut self) {
@@ -201,12 +188,16 @@ impl SystemInfo {
         self.type_id
     }
 
-    pub fn is_resource_matched(&self, world: &World) {
+    pub fn is_resource_matched(&self, world: &World) -> bool {
         self.reads_after_write
             .par_iter()
             .chain(self.reads_before_write.par_iter())
             .chain(self.writes.par_iter())
-            .all()
+            .all(|r| world.contains_id(r))
+    }
+
+    pub fn create_system(&self) -> Box<dyn RunnableSystem> {
+        (self.create)()
     }
 }
 
@@ -244,12 +235,12 @@ mod tests {
     #[test]
     fn it_works() {
         let mut has = false;
-        for _x in SystemRegistry::systems().0 {
+        for _x in SystemRegistry::get_instance().systems().iter() {
             has = true;
         }
         assert!(has);
         let mut has = false;
-        for _x in SystemRegistry::systems().0 {
+        for _x in SystemRegistry::get_instance().systems().iter() {
             has = true;
         }
         assert!(has);

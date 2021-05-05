@@ -18,11 +18,21 @@ pub struct Node<T> {
     dependencies: HashSet<T>,
 }
 
+impl<T> Node<T> {
+    pub fn dependencies(&self) -> &HashSet<T> {
+        &self.dependencies
+    }
+}
+
 pub struct TopologicalGraph<T: Eq + Hash + Clone> {
     nodes: HashMap<T, Node<T>>,
 }
 
 impl<T: Eq + Hash + Clone> TopologicalGraph<T> {
+    pub fn node(&self, item: &T) -> Option<&Node<T>> {
+        self.nodes.get(item)
+    }
+
     pub fn clear(&mut self) {
         self.nodes.clear()
     }

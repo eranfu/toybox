@@ -7,7 +7,7 @@ pub struct Prefab {
     components: Vec<Box<dyn ComponentsInPrefab>>,
 }
 
-trait ComponentsInPrefab {
+trait ComponentsInPrefab: Sync {
     fn attach(&self, world: &mut World, link: &mut PrefabLink);
 }
 
