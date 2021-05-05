@@ -112,6 +112,8 @@ struct Reader {
 
 unsafe impl Send for ReaderHandle {}
 
+unsafe impl Sync for ReaderHandle {}
+
 impl Drop for ReaderHandle {
     fn drop(&mut self) {
         WeakReader(self.reader);

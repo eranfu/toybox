@@ -3,8 +3,7 @@ use std::process::Command;
 use std::time::Duration;
 
 use tb_core::error::*;
-use tb_ecs::{SystemRegistry, World};
-use tb_engine::level::LevelManager;
+use tb_ecs::World;
 use tb_plugin::PluginManager;
 
 pub mod dir;
@@ -56,7 +55,6 @@ impl Application {
     fn main_loop(&mut self, world: &mut World) {
         loop {
             self.prepare_systems(world);
-            let _level_manager: &mut LevelManager = world.insert(LevelManager::default);
             // world.insert_components()
             // if let Some(pending_level) = level_manager.pending_level.take() {
             //     world

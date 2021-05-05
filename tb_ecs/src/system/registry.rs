@@ -161,7 +161,7 @@ pub struct SystemInfo {
 impl SystemInfo {
     pub fn new<S>() -> Self
     where
-        for<'r> S: 'static + std::default::Default + System<'r>,
+        for<'r> S: 'static + std::default::Default + System<'r> + Sync,
     {
         let type_id = std::any::TypeId::of::<S>();
         let name = std::any::type_name::<S>();
