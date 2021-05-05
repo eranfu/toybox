@@ -43,7 +43,12 @@ impl Scheduler {
             .for_each(|(i, counter): (usize, &AtomicUsize)| {
                 self.dependencies_counter[i]
                     .store(counter.load(Ordering::Relaxed), Ordering::Relaxed)
-            })
+            });
+
+        self.dependencies_counter
+            .par_iter()
+            .enumerate()
+            .for_each(|(i, counter): (usize, &AtomicUsize)| {})
     }
 
     fn refresh_systems(&mut self, world: &mut World) {

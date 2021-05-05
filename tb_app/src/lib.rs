@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 use std::process::Command;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tb_core::error::*;
-use tb_ecs::World;
+use tb_ecs::{Scheduler, World};
 use tb_plugin::PluginManager;
 
 pub mod dir;
@@ -53,18 +53,17 @@ impl Application {
     }
 
     fn main_loop(&mut self, world: &mut World) {
+        let mut scheduler = Scheduler::new(world);
+        const FPS: f32 = 30f32;
+        let frame_duration = Duration::from_secs_f32(1f32 / FPS);
         loop {
-            self.prepare_systems(world);
-            // world.insert_components()
-            // if let Some(pending_level) = level_manager.pending_level.take() {
-            //     world
-            // }
-            // world.up
-            std::thread::sleep(Duration::from_secs_f32(1f32 / 30f32))
+            let start = Instant::now();
+            scheduler.update(world);
+            let elapsed = start.elapsed();
+            let should_sleep = frame_duration - elapsed;
+            std::thread::sleep(should_sleep);
         }
     }
-
-    fn prepare_systems(&mut self, world: &mut World) {}
 }
 
 impl Default for Application {
