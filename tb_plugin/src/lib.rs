@@ -3,10 +3,14 @@ use std::path::PathBuf;
 
 use live_lib::{LibPartner, Library, Loader, Symbol};
 
-use tb_core::error::*;
+use errors::*;
 use tb_ecs::*;
 
-error_chain! {}
+mod errors {
+    pub use tb_core::error::*;
+
+    error_chain! {}
+}
 
 pub trait Plugin: Any + Send + Sync {
     fn name(&self) -> &'static str;

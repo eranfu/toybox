@@ -39,8 +39,8 @@ impl World {
                 ResourceCell(UnsafeCell::new(Box::new(create())))
             });
         if is_new {
-            let components_change_event_channel = self.insert(EventChannel::default);
-            components_change_event_channel.push(ResourcesChangeEvent::new());
+            let resource_change_events = self.insert(EventChannel::default);
+            resource_change_events.push(ResourcesChangeEvent::new());
         }
         self.fetch_mut()
     }
