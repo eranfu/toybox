@@ -58,10 +58,16 @@ impl Application {
         let frame_duration = Duration::from_secs_f32(1f32 / FPS);
         loop {
             let start = Instant::now();
+
             scheduler.update(world);
+
             let elapsed = start.elapsed();
-            let should_sleep = frame_duration - elapsed;
-            std::thread::sleep(should_sleep);
+            if frame_duration > elapsed {
+                let should_sleep = frame_duration - elapsed;
+                std::thread::sleep(should_sleep);
+            } else {
+                std::thread::yield_now();
+            }
         }
     }
 }
