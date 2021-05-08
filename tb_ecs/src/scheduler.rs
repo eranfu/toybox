@@ -9,7 +9,7 @@ use rayon::prelude::*;
 use tb_core::algorithm::topological_sort::{Node, TopologicalGraph};
 use tb_core::event_channel::{EventChannel, ReaderHandle};
 
-use crate::{ResourcesChangeEvent, System, SystemData, SystemInfo, SystemRegistry, World};
+use crate::{ResourceChangeEvent, System, SystemData, SystemInfo, SystemRegistry, World};
 
 pub struct Scheduler {
     resources_change_event_reader: ReaderHandle,
@@ -21,7 +21,7 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(world: &mut World) -> Self {
-        let channel: &mut EventChannel<ResourcesChangeEvent> = world.insert(Default::default);
+        let channel: &mut EventChannel<ResourceChangeEvent> = world.insert(Default::default);
         let resources_change_event_reader = channel.register();
         let mut scheduler = Self {
             systems: vec![],
@@ -35,7 +35,7 @@ impl Scheduler {
     }
 
     pub fn update(&mut self, world: &mut World) {
-        let events: &mut EventChannel<ResourcesChangeEvent> = world.fetch_mut();
+        let events: &mut EventChannel<ResourceChangeEvent> = unsafe { world.fetch_mut() };
         if events.read_any(&mut self.resources_change_event_reader) {
             self.refresh_systems(world);
         }
@@ -49,12 +49,14 @@ impl Scheduler {
             },
         );
 
-        (0..self.systems.len()).into_par_iter().for_each(|i| {
-            self.run_system_recursive(i, world);
-        })
+        (0..self.systems.len())
+            .into_par_iter()
+            .for_each(|i| unsafe {
+                self.run_system_recursive(i, world);
+            })
     }
 
-    fn run_system_recursive(&self, i: usize, world: &World) {
+    unsafe fn run_system_recursive(&self, i: usize, world: &World) {
         let counter = &self.dependencies_counter[i];
         if counter.fetch_sub(1, Ordering::Release) == 1 {
             counter.load(Ordering::Acquire);
@@ -143,14 +145,14 @@ impl RunnableCell {
 unsafe impl Sync for RunnableCell {}
 
 pub trait RunnableSystem: Send + Sync {
-    fn run(&mut self, world: &World);
+    unsafe fn run(&mut self, world: &World);
 }
 
 impl<T> RunnableSystem for T
 where
     for<'r> T: System<'r> + Send + Sync,
 {
-    fn run(&mut self, world: &World) {
+    unsafe fn run(&mut self, world: &World) {
         self.run(T::SystemData::fetch(world));
     }
 }

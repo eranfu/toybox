@@ -92,7 +92,7 @@ mod tests {
     fn get_none() {
         let mut world = World::default();
         let entity = world.create_entity().with(Comp {}).create();
-        let mut comps = WriteComponents::<Comp>::fetch(&world);
+        let mut comps = unsafe { WriteComponents::<Comp>::fetch(&world) };
         let mut not_comps = !(&mut comps);
         assert_eq!(not_comps.elem_fetcher().fetch_elem(entity), None);
     }

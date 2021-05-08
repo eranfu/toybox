@@ -49,8 +49,8 @@ where
     default fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         world.insert_components::<C>();
         world.insert(Entities::default);
-        let mut components_in_world = WriteComponents::<C>::fetch(world);
-        let entities = world.fetch::<Entities>();
+        let mut components_in_world = unsafe { WriteComponents::<C>::fetch(world) };
+        let entities = unsafe { world.fetch::<Entities>() };
         let (entity, components) = (self.entities.iter(), self.components.iter());
         entity.zip(components).for_each(|(&entity, component)| {
             components_in_world.insert(link.build_link(entity, entities), component.clone());
@@ -64,8 +64,8 @@ where
 {
     fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         world.insert_components::<C>();
-        let mut components_in_world = WriteComponents::<C>::fetch(world);
-        let entities = world.fetch_mut::<Entities>();
+        let mut components_in_world = unsafe { WriteComponents::<C>::fetch(world) };
+        let entities = unsafe { world.fetch_mut::<Entities>() };
         let (entity, components) = (self.entities.iter(), self.components.iter());
         entity.zip(components).for_each(|(&entity, component)| {
             let mut component: C = component.clone();
@@ -104,8 +104,10 @@ impl Prefab {
         }
         world.insert(Entities::default);
         world.insert_components::<PrefabLink>();
-        let mut prefab_links = WriteComponents::<PrefabLink>::fetch(world);
-        prefab_links.insert(link.build_link(self.root_entity, world.fetch_mut()), link);
+        let mut prefab_links = unsafe { WriteComponents::<PrefabLink>::fetch(world) };
+        unsafe {
+            prefab_links.insert(link.build_link(self.root_entity, world.fetch_mut()), link);
+        }
     }
 }
 
@@ -179,11 +181,13 @@ mod tests {
         let mut world = World::default();
         prefab.attach(&mut world);
 
-        let (components0, components1, components2) = <(
-            RAWComponents<Component0>,
-            RAWComponents<Component1>,
-            RAWComponents<Component2>,
-        ) as SystemData>::fetch(&world);
+        let (components0, components1, components2) = unsafe {
+            <(
+                RAWComponents<Component0>,
+                RAWComponents<Component1>,
+                RAWComponents<Component2>,
+            ) as SystemData>::fetch(&world)
+        };
         for component0 in components0.join() {
             let component0: &Component0 = component0;
             assert_eq!(component0.value, 10);

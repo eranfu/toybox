@@ -6,7 +6,7 @@ use crate::world::{Resource, ResourceId};
 use crate::World;
 
 pub trait SystemData<'r> {
-    fn fetch(world: &'r World) -> Self;
+    unsafe fn fetch(world: &'r World) -> Self;
     fn reads_before_write() -> Vec<ResourceId> {
         vec![]
     }
@@ -48,7 +48,7 @@ pub type RAW<'r, R> = Read<'r, R, access_order::ReadAfterWrite>;
 pub type Write<'r, R: Resource> = ResourceAccessor<&'r mut R, access_order::Write>;
 
 impl<'r> SystemData<'r> for () {
-    fn fetch(_world: &'r World) -> Self {}
+    unsafe fn fetch(_world: &'r World) -> Self {}
 }
 
 impl<'r, R, A: AccessOrder> Deref for Read<'r, R, A> {
@@ -74,7 +74,7 @@ impl<'r, R> DerefMut for Write<'r, R> {
 }
 
 impl<'r, R: Resource> SystemData<'r> for RBW<'r, R> {
-    fn fetch(world: &'r World) -> Self {
+    unsafe fn fetch(world: &'r World) -> Self {
         RBW {
             resource: world.fetch(),
             _phantom: Default::default(),
@@ -87,7 +87,7 @@ impl<'r, R: Resource> SystemData<'r> for RBW<'r, R> {
 }
 
 impl<'r, R: Resource> SystemData<'r> for Write<'r, R> {
-    fn fetch(world: &'r World) -> Self {
+    unsafe fn fetch(world: &'r World) -> Self {
         Write {
             resource: world.fetch_mut(),
             _phantom: Default::default(),
@@ -100,7 +100,7 @@ impl<'r, R: Resource> SystemData<'r> for Write<'r, R> {
 }
 
 impl<'r, R: Resource> SystemData<'r> for RAW<'r, R> {
-    fn fetch(world: &'r World) -> Self {
+    unsafe fn fetch(world: &'r World) -> Self {
         RAW {
             resource: world.fetch(),
             _phantom: Default::default(),
@@ -118,7 +118,7 @@ macro_rules! impl_system_data_tuple {
         impl_system_data_tuple!($($S1),+);
 
         impl<'r, $S0: SystemData<'r>, $($S1: SystemData<'r>),+> SystemData<'r> for ($S0, $($S1),+) {
-            fn fetch(world: &'r World) -> Self {
+            unsafe fn fetch(world: &'r World) -> Self {
                 ($S0::fetch(world), $($S1::fetch(world)),+)
             }
 

@@ -1,6 +1,7 @@
 use std::any::TypeId;
 use std::cell::UnsafeCell;
 use std::collections::HashMap;
+use std::ops::{Deref, DerefMut};
 
 use errors::*;
 use tb_core::event_channel::EventChannel;
@@ -20,6 +21,22 @@ mod errors {
 
 struct ResourceCell(UnsafeCell<Box<dyn Resource>>);
 
+impl ResourceCell {
+    #[allow(clippy::mut_from_ref)]
+    pub(crate) unsafe fn get_mut<R: Resource>(&self) -> &mut R {
+        let r = &self.0;
+        let r = &mut *r.get();
+        let r = r.deref_mut();
+        &mut *(r as *mut dyn Resource as *mut R)
+    }
+    pub(crate) unsafe fn get<R: Resource>(&self) -> &R {
+        let r = &self.0;
+        let r = &*r.get();
+        let r = r.deref();
+        &*(r as *const dyn Resource as *const R)
+    }
+}
+
 unsafe impl Sync for ResourceCell {}
 
 type Resources = HashMap<ResourceId, ResourceCell>;
@@ -27,44 +44,71 @@ type Resources = HashMap<ResourceId, ResourceCell>;
 #[derive(Default)]
 pub struct World {
     resources: Resources,
+    resource_change_events: EventChannel<ResourceChangeEvent>,
 }
 
 impl World {
     pub fn insert<R: Resource>(&mut self, create: impl FnOnce() -> R) -> &mut R {
-        let mut is_new = false;
-        self.resources
+        let change_events = &mut self.resource_change_events;
+        let res = self
+            .resources
             .entry(ResourceId::new::<R>())
             .or_insert_with(|| {
-                is_new = true;
+                change_events.push(ResourceChangeEvent::new());
                 ResourceCell(UnsafeCell::new(Box::new(create())))
             });
-        if is_new {
-            let resource_change_events = self.insert(EventChannel::default);
-            resource_change_events.push(ResourcesChangeEvent::new());
-        }
-        self.fetch_mut()
+
+        unsafe { res.get_mut::<R>() }
     }
 
-    pub fn try_fetch<R: Resource>(&self) -> errors::Result<&R> {
+    /// Fetch immutable resource
+    ///
+    /// # Safety
+    ///
+    /// The resource you fetch must meet the reference rules.
+    /// If you have got a `mutable resource` by `try_fetch_mut` or `fetch_mut`,
+    /// you can no longer fetch a `immutable resource` by this function
+    pub unsafe fn try_fetch<R: Resource>(&self) -> errors::Result<&R> {
         self.resources
             .get(&ResourceId::new::<R>())
-            .map(|r| unsafe { &*(r.0.get() as *const dyn Resource as *const R) })
+            .map(|r| r.get())
             .chain_err(|| errors::ErrorKind::Fetch(std::any::type_name::<R>().into()))
     }
 
-    pub fn try_fetch_mut<R: Resource>(&self) -> errors::Result<&mut R> {
+    /// Fetch mutable resource
+    ///
+    /// # Safety
+    ///
+    /// The Resource you fetch must meet the reference rules
+    /// If you have got a `immutable/mutable resource` by `try_fetch`/`fetch`/`try_fetch_mut`/`fetch_mut`,
+    /// you can no longer fetch a `mutable resource` by this function
+    pub unsafe fn try_fetch_mut<R: Resource>(&self) -> errors::Result<&mut R> {
         self.resources
             .get(&ResourceId::new::<R>())
-            .map(|r| unsafe { &mut *(r.0.get() as *mut dyn Resource as *mut R) })
+            .map(|r| r.get_mut())
             .chain_err(|| errors::ErrorKind::Fetch(std::any::type_name::<R>().into()))
     }
 
-    pub fn fetch<R: Resource>(&self) -> &R {
+    /// Fetch immutable resource
+    ///
+    /// # Safety
+    ///
+    /// The resource you fetch must meet the reference rules.
+    /// If you have got a `mutable resource` by `try_fetch_mut` or `fetch_mut`,
+    /// you can no longer fetch a `immutable resource` by this function
+    pub unsafe fn fetch<R: Resource>(&self) -> &R {
         self.try_fetch().unwrap()
     }
 
+    /// Fetch mutable resource
+    ///
+    /// # Safety
+    ///
+    /// The Resource you fetch must meet the reference rules
+    /// If you have got a `immutable/mutable resource` by `try_fetch`/`fetch`/`try_fetch_mut`/`fetch_mut`,
+    /// you can no longer fetch a `mutable resource` by this function
     #[allow(clippy::mut_from_ref)]
-    pub fn fetch_mut<R: Resource>(&self) -> &mut R {
+    pub unsafe fn fetch_mut<R: Resource>(&self) -> &mut R {
         self.try_fetch_mut().unwrap()
     }
 
@@ -94,9 +138,9 @@ pub trait Resource: 'static + Sync {}
 
 impl<R: 'static + Sync> Resource for R {}
 
-pub struct ResourcesChangeEvent {}
+pub struct ResourceChangeEvent {}
 
-impl ResourcesChangeEvent {
+impl ResourceChangeEvent {
     fn new() -> Self {
         Self {}
     }
@@ -118,28 +162,30 @@ mod tests {
 
     #[test]
     fn world_works() {
-        let mut world = World::default();
-        let test_resource = world.try_fetch::<TestResource>();
-        assert!(test_resource.is_err());
-        world.insert(|| TestResource::new(10));
-        assert!(world.try_fetch::<TestResource>().is_ok());
-        assert_eq!(world.fetch::<TestResource>().value, 10);
-        let resource: &mut TestResource = world.fetch_mut();
-        resource.value = 20;
-        assert_eq!(world.fetch::<TestResource>().value, 20);
+        unsafe {
+            let mut world = World::default();
+            let test_resource = world.try_fetch::<TestResource>();
+            assert!(test_resource.is_err());
+            world.insert(|| TestResource::new(10));
+            assert!(world.try_fetch::<TestResource>().is_ok());
+            assert_eq!(world.fetch::<TestResource>().value, 10);
+            let resource: &mut TestResource = world.fetch_mut();
+            resource.value = 20;
+            assert_eq!(world.fetch::<TestResource>().value, 20);
+        }
     }
 
     #[test]
     #[should_panic(expected = "Error(Fetch(\"tb_ecs::world::tests::TestResource\")")]
     fn fetch_resource_failed() {
         let world = World::default();
-        let _test_resource = world.fetch::<TestResource>();
+        let _test_resource = unsafe { world.fetch::<TestResource>() };
     }
 
     #[test]
     fn fetch_mut_error() {
         let world = World::default();
-        let result = world.try_fetch_mut::<TestResource>();
+        let result = unsafe { world.try_fetch_mut::<TestResource>() };
         assert!(result.is_err());
     }
 }

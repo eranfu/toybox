@@ -61,7 +61,7 @@ impl Entities {
     pub fn new_entity(&self) -> Entity {
         self.write().new_entity()
     }
-    pub(crate) fn kill(&self, world: &World, entity: Entity) {
+    pub(crate) unsafe fn kill(&self, world: &World, entity: Entity) {
         self.write().kill(world, entity)
     }
     pub(crate) fn read(&self) -> RwLockReadGuard<'_, EntitiesInner> {
@@ -70,9 +70,6 @@ impl Entities {
     fn write(&self) -> RwLockWriteGuard<'_, EntitiesInner> {
         self.inner.write().unwrap()
     }
-}
-
-impl Entities {
     pub(crate) fn on_component_inserted<C: Component>(&self, entity: Entity) {
         let component_index = ComponentIndex::get::<C>();
         self.inner
@@ -103,7 +100,7 @@ impl EntitiesInner {
     pub fn iter(&self) -> Flatten<Iter<'_, Vec<Entity>>> {
         self.archetypes_entities.iter().flatten()
     }
-    pub fn kill(&mut self, world: &World, entity: Entity) {
+    pub unsafe fn kill(&mut self, world: &World, entity: Entity) {
         let entity_index = match self.entity_to_index.remove(&entity) {
             Some(entity_index) => entity_index,
             None => {
@@ -119,7 +116,9 @@ impl EntitiesInner {
         }
 
         for component_index in self.archetypes_component_mask[entity_index.archetype].iter() {
-            ComponentRegistry::remove_from_world(component_index.into(), world, entity)
+            ComponentRegistry::operation(component_index.into())
+                .0
+                .remove_from_world(world, entity)
         }
     }
 
@@ -310,7 +309,7 @@ pub struct EntityCreator<'r> {
 impl EntityCreator<'_> {
     pub fn with<C: Component>(&mut self, c: C) -> &mut Self {
         self.world.insert_components::<C>();
-        let mut components = WriteComponents::<C>::fetch(self.world);
+        let mut components = unsafe { WriteComponents::<C>::fetch(self.world) };
         components.insert(self.entity, c);
         self
     }
@@ -323,7 +322,9 @@ impl EntityCreator<'_> {
 impl Drop for EntityCreator<'_> {
     fn drop(&mut self) {
         if !self.created {
-            self.world.fetch::<Entities>().kill(self.world, self.entity);
+            unsafe {
+                self.world.fetch::<Entities>().kill(self.world, self.entity);
+            }
         }
     }
 }
@@ -529,8 +530,10 @@ mod tests {
         assert_eq!(entity1.id, 1);
         assert!(entities.is_alive(entity0));
         assert!(entities.is_alive(entity1));
-        let entities = world.fetch::<Entities>();
-        entities.kill(&world, entity0);
+        let entities = unsafe { world.fetch::<Entities>() };
+        unsafe {
+            entities.kill(&world, entity0);
+        }
         assert!(!entities.is_alive(entity0));
         let entity0 = entities.new_entity();
         assert_eq!(entity0.id, 2);
@@ -542,9 +545,11 @@ mod tests {
         let mut world = World::default();
         let entity = world.create_entity().create();
         assert_eq!(entity.id, 0);
-        assert!(world.fetch::<Entities>().is_alive(entity));
+        unsafe {
+            assert!(world.fetch::<Entities>().is_alive(entity));
+        }
         world.create_entity();
-        let entities = world.fetch::<Entities>();
+        let entities = unsafe { world.fetch::<Entities>() };
         assert!(!entities
             .read()
             .entity_to_index

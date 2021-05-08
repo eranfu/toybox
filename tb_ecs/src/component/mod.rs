@@ -167,7 +167,7 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
 }
 
 impl<'r, C: Component, A: AccessOrder> ReadComponents<'r, C, A> {
-    fn new(world: &'r World) -> Self {
+    unsafe fn new(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
             storage: world.fetch_components::<C>(),
@@ -177,7 +177,7 @@ impl<'r, C: Component, A: AccessOrder> ReadComponents<'r, C, A> {
 }
 
 impl<'r, C: Component> WriteComponents<'r, C> {
-    fn new(world: &'r World) -> Self {
+    unsafe fn new(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
             storage: world.fetch_components_mut::<C>(),
@@ -191,7 +191,7 @@ impl<'r, C: Component> WriteComponents<'r, C> {
 }
 
 impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
-    fn fetch(world: &'r World) -> Self {
+    unsafe fn fetch(world: &'r World) -> Self {
         Self::new(world)
     }
 
@@ -204,7 +204,7 @@ impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
 }
 
 impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
-    fn fetch(world: &'r World) -> Self {
+    unsafe fn fetch(world: &'r World) -> Self {
         Self::new(world)
     }
 
@@ -218,7 +218,7 @@ impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
 }
 
 impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
-    fn fetch(world: &'r World) -> Self {
+    unsafe fn fetch(world: &'r World) -> Self {
         Self::new(world)
     }
 
@@ -231,12 +231,22 @@ impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
 }
 
 impl World {
-    pub fn fetch_components<C: Component>(&self) -> &ComponentStorage<C> {
+    /// Fetch immutable components
+    ///
+    /// # Safety
+    ///
+    /// see `World::fetch`
+    pub unsafe fn fetch_components<C: Component>(&self) -> &ComponentStorage<C> {
         self.fetch()
     }
 
+    /// Fetch mutable components
+    ///
+    /// # Safety
+    ///
+    /// see `World::fetch_mut`
     #[allow(clippy::mut_from_ref)]
-    pub fn fetch_components_mut<C: Component>(&self) -> &mut ComponentStorage<C> {
+    pub unsafe fn fetch_components_mut<C: Component>(&self) -> &mut ComponentStorage<C> {
         self.fetch_mut()
     }
 
@@ -268,8 +278,8 @@ mod tests {
         world.insert(Entities::default);
         world.insert(ComponentStorage::<Component1>::default);
         world.insert(ComponentStorage::<Component2>::default);
-        let components1 = RAWComponents::<Component1>::fetch(&world);
-        let mut components2 = WriteComponents::<Component2>::fetch(&world);
+        let components1 = unsafe { RAWComponents::<Component1>::fetch(&world) };
+        let mut components2 = unsafe { WriteComponents::<Component2>::fetch(&world) };
         for _x in (&components1, &mut components2).join() {
             unreachable!()
         }
@@ -279,8 +289,8 @@ mod tests {
             .with(Component1 { value1: 1 })
             .with(Component2 { value2: 2 })
             .create();
-        let components1 = RAWComponents::<Component1>::fetch(&world);
-        let mut components2 = WriteComponents::<Component2>::fetch(&world);
+        let components1 = unsafe { RAWComponents::<Component1>::fetch(&world) };
+        let mut components2 = unsafe { WriteComponents::<Component2>::fetch(&world) };
         let (v1, v2): (&Component1, &mut Component2) =
             (&components1, &mut components2).join().next().unwrap();
         assert_eq!(v1.value1, 1);
@@ -301,7 +311,7 @@ mod tests {
             .create();
 
         let (components1, components2) =
-            <(RBWComponents<Component1>, RBWComponents<Component2>)>::fetch(&world);
+            unsafe { <(RBWComponents<Component1>, RBWComponents<Component2>)>::fetch(&world) };
         let mut has = false;
         for (component1, component2) in (&components1, &components2).join() {
             has = true;
@@ -329,7 +339,7 @@ mod tests {
             .create_entity()
             .with(Component1 { value1: 10 })
             .create();
-        let mut components1 = WriteComponents::<Component1>::fetch(&world);
+        let mut components1 = unsafe { WriteComponents::<Component1>::fetch(&world) };
         for component1 in (&mut components1).join() {
             assert_eq!(component1.value1, 10);
         }

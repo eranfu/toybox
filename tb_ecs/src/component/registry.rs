@@ -76,15 +76,15 @@ impl ComponentRegistry {
         }
     }
 
-    pub(crate) fn remove_from_world(
+    pub(crate) fn operation(
         component_index: ComponentIndex,
-        world: &World,
-        entity: Entity,
+    ) -> (
+        &'static dyn ComponentOperation,
+        RwLockReadGuard<'static, ComponentRegistry>,
     ) {
         let instance = Self::read();
-        instance.infos[component_index]
-            .operation
-            .remove_from_world(world, entity)
+        let operation = &*instance.infos[component_index].operation;
+        (unsafe { std::mem::transmute(operation) }, instance)
     }
 
     fn get_instance() -> &'static RwLock<ComponentRegistry> {
@@ -115,7 +115,7 @@ impl ComponentRegistry {
 }
 
 pub trait ComponentOperation: Send + Sync {
-    fn remove_from_world(&self, world: &World, entity: Entity);
+    unsafe fn remove_from_world(&self, world: &World, entity: Entity);
 }
 
 struct Operation<C: Component> {
@@ -127,7 +127,7 @@ unsafe impl<C: Component> Send for Operation<C> {}
 unsafe impl<C: Component> Sync for Operation<C> {}
 
 impl<C: Component> ComponentOperation for Operation<C> {
-    fn remove_from_world(&self, world: &World, entity: Entity) {
+    unsafe fn remove_from_world(&self, world: &World, entity: Entity) {
         let components = world.fetch_components_mut::<C>();
         components.remove(entity)
     }
