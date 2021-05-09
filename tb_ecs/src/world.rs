@@ -48,6 +48,13 @@ pub struct World {
 }
 
 impl World {
+    pub(crate) fn resource_change_events(&self) -> &EventChannel<ResourceChangeEvent> {
+        &self.resource_change_events
+    }
+    pub(crate) fn resource_change_events_mut(&mut self) -> &mut EventChannel<ResourceChangeEvent> {
+        &mut self.resource_change_events
+    }
+
     pub fn insert<R: Resource>(&mut self, create: impl FnOnce() -> R) -> &mut R {
         let change_events = &mut self.resource_change_events;
         let res = self

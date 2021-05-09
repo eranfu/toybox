@@ -7,9 +7,9 @@ use dashmap::DashSet;
 use rayon::prelude::*;
 
 use tb_core::algorithm::topological_sort::{Node, TopologicalGraph};
-use tb_core::event_channel::{EventChannel, ReaderHandle};
+use tb_core::event_channel::ReaderHandle;
 
-use crate::{ResourceChangeEvent, System, SystemData, SystemInfo, SystemRegistry, World};
+use crate::{System, SystemData, SystemInfo, SystemRegistry, World};
 
 pub struct Scheduler {
     resources_change_event_reader: ReaderHandle,
@@ -21,7 +21,7 @@ pub struct Scheduler {
 
 impl Scheduler {
     pub fn new(world: &mut World) -> Self {
-        let channel: &mut EventChannel<ResourceChangeEvent> = world.insert(Default::default);
+        let channel = world.resource_change_events_mut();
         let resources_change_event_reader = channel.register();
         let mut scheduler = Self {
             systems: vec![],
@@ -35,7 +35,7 @@ impl Scheduler {
     }
 
     pub fn update(&mut self, world: &mut World) {
-        let events: &mut EventChannel<ResourceChangeEvent> = unsafe { world.fetch_mut() };
+        let events = world.resource_change_events();
         if events.read_any(&mut self.resources_change_event_reader) {
             self.refresh_systems(world);
         }
@@ -145,6 +145,11 @@ impl RunnableCell {
 unsafe impl Sync for RunnableCell {}
 
 pub trait RunnableSystem: Send + Sync {
+    /// Run system
+    ///
+    /// # Safety
+    ///
+    /// Access to a resource can only have multiple reads or one write at the same time
     unsafe fn run(&mut self, world: &World);
 }
 
