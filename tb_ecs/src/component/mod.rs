@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 use std::ops::Not;
 
+pub use serde::{Deserialize, Serialize};
+
 pub use anti_components::*;
 pub use registry::*;
 pub use storage::*;
@@ -11,7 +13,7 @@ mod anti_components;
 pub(crate) mod registry;
 mod storage;
 
-pub trait Component: 'static + Sized + Clone + Sync {}
+pub trait Component: 'static + Sized + Clone + Send + Sync {}
 
 pub trait EntityRef {
     fn for_each(&mut self, action: &mut impl FnMut(&mut Entity));

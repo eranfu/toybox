@@ -8,11 +8,12 @@ use std::slice::Iter;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bit_set::BitSet;
+use serde::{Deserialize, Serialize};
 
 use crate::registry::{ComponentIndex, ComponentRegistry};
 use crate::{Component, Join, SystemData, World, WriteComponents};
 
-#[derive(Copy, Clone, Hash, PartialEq, Eq, Debug)]
+#[derive(Deserialize, Serialize, Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Entity {
     id: u64,
 }

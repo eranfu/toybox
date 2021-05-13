@@ -72,7 +72,7 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let output = quote! {
-        #[derive(Clone)]
+        #[derive(Clone, Deserialize, Serialize)]
         #component_struct
 
         impl Component for #component_name {}

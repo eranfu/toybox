@@ -2,6 +2,7 @@
 #![feature(maybe_uninit_extra)]
 
 pub use inventory;
+pub use serde::{Deserialize, Serialize};
 
 pub use component::*;
 pub use entity::*;

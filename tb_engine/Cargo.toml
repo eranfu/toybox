@@ -11,3 +11,7 @@ tb_core = { path = "../tb_core" }
 tb_ecs = { path = "../tb_ecs" }
 tb_ecs_macro = { path = "../tb_ecs_macro" }
 bimap = "0.5.3"
+serde = { version = "1.0.125", features = ["derive"] }
+serde_json = { version = "1.0.64", features = ["arbitrary_precision"] }
+serde_traitobject = "0.2.7"
+thread_pool = { version = "1.0.0", git = "https://github.com/dahai-f/thread_pool.git" }

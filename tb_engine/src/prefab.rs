@@ -1,13 +1,17 @@
-use bimap::BiHashMap;
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+use serde_traitobject as s;
 
 use tb_ecs::*;
 
+#[derive(Deserialize, Serialize)]
 pub struct Prefab {
     root_entity: Entity,
-    components: Vec<Box<dyn ComponentsInPrefab>>,
+    components: Vec<s::Box<dyn ComponentsInPrefab>>,
 }
 
-trait ComponentsInPrefab: Sync {
+trait ComponentsInPrefab: Send + Sync + s::Serialize + s::Deserialize {
     fn attach(&self, world: &mut World, link: &mut PrefabLink);
 }
 
@@ -18,9 +22,10 @@ pub trait ConvertToWorld {
 #[component]
 #[derive(Default)]
 pub struct PrefabLink {
-    local_entity_to_world_map: BiHashMap<Entity, Entity>,
+    local_entity_to_world_map: HashMap<Entity, Entity>,
 }
 
+#[derive(Serialize, Deserialize)]
 struct ComponentStorageInPrefab<C: Component> {
     components: Vec<C>,
     entities: Vec<Entity>,
@@ -44,7 +49,7 @@ impl<C: Component> Default for ComponentStorageInPrefab<C> {
 
 impl<C> ComponentsInPrefab for ComponentStorageInPrefab<C>
 where
-    C: Component,
+    C: Component + Serialize + for<'de> Deserialize<'de>,
 {
     default fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         world.insert_components::<C>();
@@ -60,7 +65,8 @@ where
 
 impl<C> ComponentsInPrefab for ComponentStorageInPrefab<C>
 where
-    for<'e> C: ComponentWithEntityRef<'e>,
+    C: Serialize,
+    for<'e> C: ComponentWithEntityRef<'e> + Deserialize<'e>,
 {
     fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         world.insert_components::<C>();
@@ -79,16 +85,10 @@ where
 
 impl PrefabLink {
     fn build_link(&mut self, local: Entity, entities: &Entities) -> Entity {
-        match self.local_entity_to_world_map.get_by_left(&local) {
+        match self.local_entity_to_world_map.get(&local) {
             None => {
                 let entity = entities.new_entity();
-                match self
-                    .local_entity_to_world_map
-                    .insert_no_overwrite(local, entity)
-                {
-                    Ok(_) => {}
-                    Err(_) => unreachable!(),
-                }
+                self.local_entity_to_world_map.insert(local, entity);
                 entity
             }
             Some(entity) => *entity,
@@ -121,6 +121,8 @@ impl<E: EntityRef> ConvertToWorld for E {
 
 #[cfg(test)]
 mod tests {
+    use serde_traitobject as s;
+
     use tb_ecs::*;
 
     use crate::prefab::{ComponentStorageInPrefab, ComponentWithEntityRef, Prefab};
@@ -167,10 +169,10 @@ mod tests {
                     entity_b: entities[10],
                 },
             );
-            let components: Vec<Box<dyn crate::prefab::ComponentsInPrefab>> = vec![
-                Box::new(components0),
-                Box::new(components1),
-                Box::new(components2),
+            let components: Vec<s::Box<dyn crate::prefab::ComponentsInPrefab>> = vec![
+                s::Box::new(components0),
+                s::Box::new(components1),
+                s::Box::new(components2),
             ];
             Prefab {
                 root_entity: Entity::new(15),
