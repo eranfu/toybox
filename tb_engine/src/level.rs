@@ -5,7 +5,7 @@ use tb_ecs::*;
 use crate::asset::AssetHandle;
 use crate::prefab::Prefab;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct Level {
     root: Prefab,
 }
