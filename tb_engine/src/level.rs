@@ -14,6 +14,16 @@ impl Level {
     pub fn attach(&self, world: &mut World) {
         self.root.attach(world);
     }
+
+    pub fn create_entity(&mut self) -> EntityCreator {
+        EntityCreator {
+            prefab: &mut self.root,
+        }
+    }
+}
+
+pub struct EntityCreator<'p> {
+    prefab: &'p mut Prefab,
 }
 
 #[derive(Default)]
