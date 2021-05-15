@@ -11,13 +11,9 @@ pub struct Prefab {
     components: Vec<s::Box<dyn ComponentsInPrefab>>,
 }
 
-impl Default for Prefab {
-    fn default() -> Self {
-        Self {
-            root_entity: Entity::new(0),
-            components: vec![],
-        }
-    }
+pub struct PrefabCreator {
+    root_entity: Entity,
+    components: Vec<s::Box<dyn ComponentsInPrefab>>,
 }
 
 trait ComponentsInPrefab: Send + Sync + s::Serialize + s::Deserialize {
