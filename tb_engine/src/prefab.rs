@@ -1,22 +1,24 @@
 use std::collections::HashMap;
 
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_traitobject as s;
+use serde_box::*;
 
 use tb_ecs::*;
 
 #[derive(Deserialize, Serialize)]
 pub struct Prefab {
     root_entity: Entity,
-    components: Vec<s::Box<dyn ComponentsInPrefab>>,
+    components: Vec<SerdeBox<dyn ComponentsInPrefab>>,
 }
 
 pub struct PrefabCreator {
     root_entity: Entity,
-    components: Vec<s::Box<dyn ComponentsInPrefab>>,
+    components: Vec<SerdeBox<dyn ComponentsInPrefab>>,
 }
 
-trait ComponentsInPrefab: Send + Sync + s::Serialize + s::Deserialize {
+#[serde_box]
+trait ComponentsInPrefab: Send + Sync + SerdeBoxSer + SerdeBoxDe {
     fn attach(&self, world: &mut World, link: &mut PrefabLink);
 }
 
@@ -52,9 +54,10 @@ impl<C: Component> Default for ComponentStorageInPrefab<C> {
     }
 }
 
+#[serde_box]
 impl<C> ComponentsInPrefab for ComponentStorageInPrefab<C>
 where
-    C: Component + Serialize + for<'de> Deserialize<'de>,
+    C: Component + Serialize + DeserializeOwned,
 {
     default fn attach(&self, world: &mut World, link: &mut PrefabLink) {
         world.insert_components::<C>();
@@ -126,7 +129,7 @@ impl<E: EntityRef> ConvertToWorld for E {
 
 #[cfg(test)]
 mod tests {
-    use serde_traitobject as s;
+    use serde_box::*;
 
     use tb_ecs::*;
 
@@ -174,10 +177,10 @@ mod tests {
                     entity_b: entities[10],
                 },
             );
-            let components: Vec<s::Box<dyn crate::prefab::ComponentsInPrefab>> = vec![
-                s::Box::new(components0),
-                s::Box::new(components1),
-                s::Box::new(components2),
+            let components: Vec<SerdeBox<dyn crate::prefab::ComponentsInPrefab>> = vec![
+                SerdeBox(Box::new(components0)),
+                SerdeBox(Box::new(components1)),
+                SerdeBox(Box::new(components2)),
             ];
             Prefab {
                 root_entity: Entity::new(15),
