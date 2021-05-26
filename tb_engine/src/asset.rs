@@ -6,6 +6,7 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::TryRecvError;
 
 use errors::*;
+use tb_ecs::*;
 
 mod errors {
     pub use tb_core::error::*;
@@ -119,6 +120,19 @@ impl Default for AssetLoader {
             completed_assets_sender: sender,
             completed_assets_receiver: receiver,
             next_id: 0,
+        }
+    }
+}
+
+#[system]
+struct LoadAssetSystem {}
+
+impl<'s> System<'s> for LoadAssetSystem {
+    type SystemData = Write<'s, AssetLoader>;
+
+    fn run(&mut self, mut asset_loader: Self::SystemData) {
+        if let Some(err) = asset_loader.update().err() {
+            eprintln!("{}", err.display_chain());
         }
     }
 }
