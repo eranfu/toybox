@@ -66,7 +66,7 @@ impl Application {
     }
 
     fn setup_entry_level(&self, world: &mut World) -> Result<()> {
-        let path = self.project_asset_dir.join("levels/entry.tlevel");
+        let path = self.project_asset_dir.join("levels/entry.tblevel");
         world.insert(LevelManager::default);
         world.insert(AssetLoader::default);
         let (mut level_manager, mut asset_loader) =
