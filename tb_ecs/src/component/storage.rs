@@ -2,8 +2,21 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::slice::Iter;
 
-use crate::{Component, Entity, join};
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
+use serde_box::*;
 
+use crate::{
+    join, Component, ComponentWithEntityRef, Entities, Entity, EntityRef, SystemData, World,
+    WriteComponents,
+};
+
+#[serde_box]
+pub trait ComponentStorageTrait: Send + Sync + SerdeBoxSer + SerdeBoxDe {
+    fn attach_to_world(&self, world: &mut World, link: &mut LocalToWorldLink);
+}
+
+#[derive(Serialize, Deserialize)]
 pub struct ComponentStorage<C: Component> {
     data: Vec<C>,
     entities: Vec<Entity>,
@@ -62,6 +75,40 @@ impl<T: Component> Default for ComponentStorage<T> {
     }
 }
 
+#[serde_box]
+impl<C: Component + Serialize + DeserializeOwned> ComponentStorageTrait for ComponentStorage<C> {
+    default fn attach_to_world(&self, world: &mut World, link: &mut LocalToWorldLink) {
+        world.insert_components::<C>();
+        world.insert(Entities::default);
+        let mut components_in_world = unsafe { WriteComponents::<C>::fetch(world) };
+        let entities = unsafe { world.fetch::<Entities>() };
+        let (entity, components) = (self.entities.iter(), self.data.iter());
+        entity.zip(components).for_each(|(&entity, component)| {
+            components_in_world.insert(link.build_link(entity, entities), component.clone());
+        });
+    }
+}
+
+#[serde_box]
+impl<C: Serialize + DeserializeOwned> ComponentStorageTrait for ComponentStorage<C>
+where
+    for<'e> C: ComponentWithEntityRef<'e>,
+{
+    fn attach_to_world(&self, world: &mut World, link: &mut LocalToWorldLink) {
+        world.insert_components::<C>();
+        let mut components_in_world = unsafe { WriteComponents::<C>::fetch(world) };
+        let entities = unsafe { world.fetch_mut::<Entities>() };
+        let (entity, components) = (self.entities.iter(), self.data.iter());
+        entity.zip(components).for_each(|(&entity, component)| {
+            let mut component: C = component.clone();
+            let mut entity_ref = component.get_entity_ref();
+            ConvertToWorld::convert_to_world(&mut entity_ref, link, entities);
+            drop(entity_ref);
+            components_in_world.insert(link.build_link(entity, entities), component);
+        });
+    }
+}
+
 impl<'s, T: Component> join::ElementFetcher for &'s ComponentStorage<T> {
     type Element = &'s T;
 
@@ -84,9 +131,37 @@ impl<'s, T: Component> join::ElementFetcher for &'s mut ComponentStorage<T> {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Clone, Deserialize, Serialize)]
+pub struct LocalToWorldLink(HashMap<Entity, Entity>);
+
+impl LocalToWorldLink {
+    pub fn build_link(&mut self, local: Entity, entities: &Entities) -> Entity {
+        match self.0.get(&local) {
+            None => {
+                let entity = entities.new_entity();
+                self.0.insert(local, entity);
+                entity
+            }
+            Some(entity) => *entity,
+        }
+    }
+}
+
+pub trait ConvertToWorld {
+    fn convert_to_world(&mut self, link: &mut LocalToWorldLink, entities: &mut Entities);
+}
+
+impl<E: EntityRef> ConvertToWorld for E {
+    default fn convert_to_world(&mut self, link: &mut LocalToWorldLink, entities: &mut Entities) {
+        self.for_each(&mut |e: &mut Entity| {
+            *e = link.build_link(*e, entities);
+        });
+    }
+}
+
+#[derive(Default, Serialize, Deserialize)]
 struct EntityToIndex {
-    entity_to_index: HashMap<Entity, usize>, // todo: optimize performance
+    entity_to_index: HashMap<Entity, usize>,
 }
 
 impl EntityToIndex {

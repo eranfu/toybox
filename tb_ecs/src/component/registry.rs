@@ -76,6 +76,12 @@ impl ComponentRegistry {
         }
     }
 
+    pub fn for_each(op: impl FnMut(&&ComponentInfo)) {
+        let this = Self::read();
+        let this: &Self = &this;
+        this.infos.iter().for_each(op);
+    }
+
     pub(crate) fn operation(
         component_index: ComponentIndex,
     ) -> (
@@ -128,7 +134,7 @@ unsafe impl<C: Component> Sync for Operation<C> {}
 
 impl<C: Component> ComponentOperation for Operation<C> {
     unsafe fn remove_from_world(&self, world: &World, entity: Entity) {
-        let components = world.fetch_components_mut::<C>();
+        let components = unsafe { world.fetch_components_mut::<C>() };
         components.remove(entity)
     }
 }

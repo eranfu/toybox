@@ -6,124 +6,34 @@ use serde_box::*;
 
 use tb_ecs::*;
 
-#[derive(Deserialize, Serialize)]
-pub struct Prefab {
-    root_entity: Entity,
-    components: Vec<SerdeBox<dyn ComponentsInPrefab>>,
-}
-
-pub struct PrefabCreator {
-    root_entity: Entity,
-    components: Vec<SerdeBox<dyn ComponentsInPrefab>>,
-}
-
-#[serde_box]
-trait ComponentsInPrefab: Send + Sync + SerdeBoxSer + SerdeBoxDe {
-    fn attach(&self, world: &mut World, link: &mut PrefabLink);
-}
-
-pub trait ConvertToWorld {
-    fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities);
-}
-
 #[component]
 #[derive(Default)]
 pub struct PrefabLink {
-    local_entity_to_world_map: HashMap<Entity, Entity>,
+    link: LocalToWorldLink,
 }
 
-#[derive(Serialize, Deserialize)]
-struct ComponentStorageInPrefab<C: Component> {
-    components: Vec<C>,
-    entities: Vec<Entity>,
-}
-
-impl<C: Component> ComponentStorageInPrefab<C> {
-    pub(crate) fn insert(&mut self, entity: Entity, component: C) {
-        self.entities.push(entity);
-        self.components.push(component);
-    }
-}
-
-impl<C: Component> Default for ComponentStorageInPrefab<C> {
-    fn default() -> Self {
-        Self {
-            components: vec![],
-            entities: vec![],
-        }
-    }
-}
-
-#[serde_box]
-impl<C> ComponentsInPrefab for ComponentStorageInPrefab<C>
-where
-    C: Component + Serialize + DeserializeOwned,
-{
-    default fn attach(&self, world: &mut World, link: &mut PrefabLink) {
-        world.insert_components::<C>();
-        world.insert(Entities::default);
-        let mut components_in_world = unsafe { WriteComponents::<C>::fetch(world) };
-        let entities = unsafe { world.fetch::<Entities>() };
-        let (entity, components) = (self.entities.iter(), self.components.iter());
-        entity.zip(components).for_each(|(&entity, component)| {
-            components_in_world.insert(link.build_link(entity, entities), component.clone());
-        });
-    }
-}
-
-impl<C> ComponentsInPrefab for ComponentStorageInPrefab<C>
-where
-    C: Serialize,
-    for<'e> C: ComponentWithEntityRef<'e> + Deserialize<'e>,
-{
-    fn attach(&self, world: &mut World, link: &mut PrefabLink) {
-        world.insert_components::<C>();
-        let mut components_in_world = unsafe { WriteComponents::<C>::fetch(world) };
-        let entities = unsafe { world.fetch_mut::<Entities>() };
-        let (entity, components) = (self.entities.iter(), self.components.iter());
-        entity.zip(components).for_each(|(&entity, component)| {
-            let mut component: C = component.clone();
-            let mut entity_ref = component.get_entity_ref();
-            ConvertToWorld::convert_to_world(&mut entity_ref, link, entities);
-            drop(entity_ref);
-            components_in_world.insert(link.build_link(entity, entities), component);
-        });
-    }
-}
-
-impl PrefabLink {
-    fn build_link(&mut self, local: Entity, entities: &Entities) -> Entity {
-        match self.local_entity_to_world_map.get(&local) {
-            None => {
-                let entity = entities.new_entity();
-                self.local_entity_to_world_map.insert(local, entity);
-                entity
-            }
-            Some(entity) => *entity,
-        }
-    }
+#[derive(Deserialize, Serialize)]
+pub struct Prefab {
+    root_entity: Entity,
+    components: Vec<SerdeBox<dyn ComponentStorageTrait>>,
 }
 
 impl Prefab {
+    pub(crate) fn from_world(world: &World) -> Self {}
     pub(crate) fn attach(&self, world: &mut World) {
         let mut link = PrefabLink::default();
         for components in &self.components {
-            components.attach(world, &mut link);
+            components.attach_to_world(world, &mut link.link);
         }
         world.insert(Entities::default);
         world.insert_components::<PrefabLink>();
         let mut prefab_links = unsafe { WriteComponents::<PrefabLink>::fetch(world) };
         unsafe {
-            prefab_links.insert(link.build_link(self.root_entity, world.fetch_mut()), link);
+            prefab_links.insert(
+                link.link.build_link(self.root_entity, world.fetch_mut()),
+                link,
+            );
         }
-    }
-}
-
-impl<E: EntityRef> ConvertToWorld for E {
-    default fn convert_to_world(&mut self, link: &mut PrefabLink, entities: &mut Entities) {
-        self.for_each(&mut |e: &mut Entity| {
-            *e = link.build_link(*e, entities);
-        });
     }
 }
 
@@ -177,7 +87,7 @@ mod tests {
                     entity_b: entities[10],
                 },
             );
-            let components: Vec<SerdeBox<dyn crate::prefab::ComponentsInPrefab>> = vec![
+            let components: Vec<SerdeBox<dyn crate::prefab::ComponentStorageTrait>> = vec![
                 SerdeBox(Box::new(components0)),
                 SerdeBox(Box::new(components1)),
                 SerdeBox(Box::new(components2)),

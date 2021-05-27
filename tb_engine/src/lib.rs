@@ -1,4 +1,3 @@
-#![feature(specialization)]
 #![feature(once_cell)]
 
 pub mod asset;

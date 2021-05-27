@@ -2,6 +2,7 @@ use std::marker::PhantomData;
 use std::ops::Not;
 
 pub use serde::{Deserialize, Serialize};
+use serde_box::*;
 
 pub use anti_components::*;
 pub use registry::*;
