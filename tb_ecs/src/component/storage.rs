@@ -2,19 +2,9 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::slice::Iter;
 
-use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_box::*;
 
-use crate::{
-    join, Component, ComponentWithEntityRef, Entities, Entity, EntityRef, SystemData, World,
-    WriteComponents,
-};
-
-#[serde_box]
-pub trait ComponentStorageTrait: Send + Sync + SerdeBoxSer + SerdeBoxDe {
-    fn attach_to_world(&self, world: &mut World, link: &mut LocalToWorldLink);
-}
+use crate::{join, Component, Entities, Entity, EntityRef};
 
 #[derive(Serialize, Deserialize)]
 pub struct ComponentStorage<C: Component> {
@@ -42,7 +32,7 @@ impl<T: Component> ComponentStorage<T> {
         self.data.is_empty()
     }
 
-    pub(crate) fn insert(&mut self, entity: Entity, elem: T) {
+    pub fn insert(&mut self, entity: Entity, elem: T) {
         match self.entity_to_index.entry(entity) {
             Entry::Occupied(occupied) => self.data[*occupied.get()] = elem,
             Entry::Vacant(vacant) => {
@@ -63,6 +53,19 @@ impl<T: Component> ComponentStorage<T> {
             }
         }
     }
+
+    pub fn get(&self, entity: Entity) -> Option<&T> {
+        self.entity_to_index
+            .get(&entity)
+            .map(|&index| &self.data[index])
+    }
+
+    pub fn get_mut(&mut self, entity: Entity) -> Option<&mut T> {
+        match self.entity_to_index.get(&entity) {
+            None => None,
+            Some(&index) => Some(&mut self.data[index]),
+        }
+    }
 }
 
 impl<T: Component> Default for ComponentStorage<T> {
@@ -75,47 +78,11 @@ impl<T: Component> Default for ComponentStorage<T> {
     }
 }
 
-#[serde_box]
-impl<C: Component + Serialize + DeserializeOwned> ComponentStorageTrait for ComponentStorage<C> {
-    default fn attach_to_world(&self, world: &mut World, link: &mut LocalToWorldLink) {
-        world.insert_components::<C>();
-        world.insert(Entities::default);
-        let mut components_in_world = unsafe { WriteComponents::<C>::fetch(world) };
-        let entities = unsafe { world.fetch::<Entities>() };
-        let (entity, components) = (self.entities.iter(), self.data.iter());
-        entity.zip(components).for_each(|(&entity, component)| {
-            components_in_world.insert(link.build_link(entity, entities), component.clone());
-        });
-    }
-}
-
-#[serde_box]
-impl<C: Serialize + DeserializeOwned> ComponentStorageTrait for ComponentStorage<C>
-where
-    for<'e> C: ComponentWithEntityRef<'e>,
-{
-    fn attach_to_world(&self, world: &mut World, link: &mut LocalToWorldLink) {
-        world.insert_components::<C>();
-        let mut components_in_world = unsafe { WriteComponents::<C>::fetch(world) };
-        let entities = unsafe { world.fetch_mut::<Entities>() };
-        let (entity, components) = (self.entities.iter(), self.data.iter());
-        entity.zip(components).for_each(|(&entity, component)| {
-            let mut component: C = component.clone();
-            let mut entity_ref = component.get_entity_ref();
-            ConvertToWorld::convert_to_world(&mut entity_ref, link, entities);
-            drop(entity_ref);
-            components_in_world.insert(link.build_link(entity, entities), component);
-        });
-    }
-}
-
 impl<'s, T: Component> join::ElementFetcher for &'s ComponentStorage<T> {
     type Element = &'s T;
 
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {
-        self.entity_to_index
-            .get(&entity)
-            .map(|index| &self.data[*index])
+        self.get(entity)
     }
 }
 
@@ -124,10 +91,7 @@ impl<'s, T: Component> join::ElementFetcher for &'s mut ComponentStorage<T> {
 
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {
         let s: &'s mut Self = unsafe { std::mem::transmute(self) };
-        let data = &mut s.data;
-        s.entity_to_index
-            .get(&entity)
-            .map(move |&index| &mut data[index])
+        s.get_mut(entity)
     }
 }
 
@@ -152,7 +116,7 @@ pub trait ConvertToWorld {
 }
 
 impl<E: EntityRef> ConvertToWorld for E {
-    default fn convert_to_world(&mut self, link: &mut LocalToWorldLink, entities: &mut Entities) {
+    fn convert_to_world(&mut self, link: &mut LocalToWorldLink, entities: &mut Entities) {
         self.for_each(&mut |e: &mut Entity| {
             *e = link.build_link(*e, entities);
         });

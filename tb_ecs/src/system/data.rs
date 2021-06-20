@@ -6,7 +6,13 @@ use crate::world::{Resource, ResourceId};
 use crate::World;
 
 pub trait SystemData<'r> {
+    /// Fetch SystemData
+    ///
+    /// # Safety
+    ///
+    /// The SystemData must meet the reference rules.
     unsafe fn fetch(world: &'r World) -> Self;
+
     fn reads_before_write() -> Vec<ResourceId> {
         vec![]
     }

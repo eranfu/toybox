@@ -1,27 +1,22 @@
-use std::path::PathBuf;
 use std::process::Command;
 use std::time::{Duration, Instant};
 
-use tb_core::error::*;
+use errors::*;
 use tb_ecs::*;
+use tb_engine::app_info::{AppInfo, LaunchMethod};
 use tb_engine::asset::AssetLoader;
 use tb_engine::level::{Level, LevelManager};
+use tb_engine::path::TbPath;
 use tb_plugin::PluginManager;
 
-pub mod dir;
+mod errors {
+    pub use tb_core::error::*;
 
-error_chain! {}
-
-enum LaunchMethod {
-    Project { project_dir: PathBuf },
-    Archive,
+    error_chain! {}
 }
 
-pub struct Application {
-    method: LaunchMethod,
-    project_root_dir: PathBuf,
-    project_asset_dir: PathBuf,
-}
+#[derive(Default)]
+pub struct Application {}
 
 impl Application {
     pub fn run() -> Result<()> {
@@ -35,12 +30,12 @@ impl Application {
 
     fn setup_project(&mut self, world: &mut World) -> Result<()> {
         let plugin_manager: &mut PluginManager = world.insert(PluginManager::default);
-        match &self.method {
+        let app_info = AppInfo::get();
+        match &app_info.method {
             LaunchMethod::Project { project_dir } => {
                 if !project_dir.exists() {
-                    bail!("project not exists. path: {:?}", project_dir)
+                    bail!("project not exists. path: {:?}", project_dir);
                 }
-
                 Command::new("cargo")
                     .current_dir(project_dir)
                     .arg("build")
@@ -57,16 +52,19 @@ impl Application {
             LaunchMethod::Archive => {}
         }
 
-        if !self.project_asset_dir.exists() {
-            std::fs::create_dir_all(&self.project_asset_dir).chain_err(|| {
-                format!("Failed to create asset dir: {:?}", self.project_asset_dir)
+        if !app_info.project_assets_dir.exists() {
+            std::fs::create_dir_all(&app_info.project_assets_dir).chain_err(|| {
+                format!(
+                    "Failed to create asset dir: {:?}",
+                    app_info.project_assets_dir
+                )
             })?;
         }
         Ok(())
     }
 
     fn setup_entry_level(&self, world: &mut World) -> Result<()> {
-        let path = self.project_asset_dir.join("levels/entry.tblevel");
+        let path = TbPath::new_project_assets("levels/entry.tbasset");
         world.insert(LevelManager::default);
         world.insert(AssetLoader::default);
         let (mut level_manager, mut asset_loader) =
@@ -92,39 +90,6 @@ impl Application {
             } else {
                 std::thread::yield_now();
             }
-        }
-    }
-}
-
-impl Default for Application {
-    fn default() -> Self {
-        let mut method = LaunchMethod::Archive;
-        let mut args = std::env::args();
-        args.next();
-        while let Some(arg) = args.next() {
-            match arg.as_str() {
-                "--project" | "-p" => {
-                    let project = args.next().unwrap();
-                    method = LaunchMethod::Project {
-                        project_dir: PathBuf::from(project),
-                    }
-                }
-                arg => {
-                    eprintln!("unknown argument: {}", arg);
-                }
-            }
-        }
-
-        let project_root_dir = match &method {
-            LaunchMethod::Project { project_dir } => project_dir.clone(),
-            LaunchMethod::Archive => std::env::current_dir()
-                .chain_err(|| "Failed to get current_dir")
-                .unwrap(),
-        };
-        Application {
-            method,
-            project_asset_dir: project_root_dir.join("assets"),
-            project_root_dir,
         }
     }
 }

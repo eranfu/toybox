@@ -9,10 +9,9 @@ edition = "2018"
 [dependencies]
 tb_core = { path = "../tb_core" }
 tb_ecs = { path = "../tb_ecs" }
+tb_physics = { path = "../tb_physics" }
 tb_ecs_macro = { path = "../tb_ecs_macro" }
-serde_box = { version = "0.1.0", git = "https://github.com/dahai-f/serde_box.git" }
 thread_pool = { version = "1.0.0", git = "https://github.com/dahai-f/thread_pool.git" }
 
 bimap = "0.5.3"
 serde = { version = "1.0.125", features = ["derive"] }
-serde_json = { version = "1.0.64", features = ["arbitrary_precision"] }

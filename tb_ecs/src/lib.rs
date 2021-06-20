@@ -1,9 +1,7 @@
 #![feature(once_cell)]
 #![feature(maybe_uninit_extra)]
-#![feature(specialization)]
 
 pub use inventory;
-pub use serde::{Deserialize, Serialize};
 
 pub use component::*;
 pub use entity::*;

@@ -134,8 +134,7 @@ unsafe impl<C: Component> Sync for Operation<C> {}
 
 impl<C: Component> ComponentOperation for Operation<C> {
     unsafe fn remove_from_world(&self, world: &World, entity: Entity) {
-        let components = unsafe { world.fetch_components_mut::<C>() };
-        components.remove(entity)
+        world.fetch_components_mut::<C>().remove(entity)
     }
 }
 

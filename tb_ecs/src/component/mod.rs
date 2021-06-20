@@ -1,12 +1,10 @@
 use std::marker::PhantomData;
 use std::ops::Not;
 
-pub use serde::{Deserialize, Serialize};
-use serde_box::*;
-
 pub use anti_components::*;
 pub use registry::*;
 pub use storage::*;
+pub use tb_core::serde::*;
 
 use crate::*;
 
@@ -14,7 +12,8 @@ mod anti_components;
 pub(crate) mod registry;
 mod storage;
 
-pub trait Component: 'static + Sized + Clone + Send + Sync {}
+#[serde_box]
+pub trait Component: 'static + Send + Sync + SerdeBoxSer + SerdeBoxDe {}
 
 pub trait EntityRef {
     fn for_each(&mut self, action: &mut impl FnMut(&mut Entity));
@@ -68,6 +67,12 @@ impl<'r, C: Component> Storage for &'r mut ComponentStorage<C> {
 impl<'e> EntityRef for &'e mut Entity {
     fn for_each(&mut self, action: &mut impl FnMut(&mut Entity)) {
         action(self)
+    }
+}
+
+impl<'e> EntityRef for &'e mut Vec<Entity> {
+    fn for_each(&mut self, action: &mut impl FnMut(&mut Entity)) {
+        self.iter_mut().for_each(action)
     }
 }
 

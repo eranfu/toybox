@@ -1,3 +1,5 @@
+#![feature(exact_size_is_empty)]
+
 use proc_macro::TokenStream;
 
 use quote::*;
@@ -23,48 +25,57 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let fields: Vec<&Field> = component_struct
         .fields
         .iter()
-        .filter(|field| field.ty.to_token_stream().to_string() == "Entity")
+        .filter(|field| {
+            let ty = field.ty.to_token_stream().to_string();
+            ty == "Entity" || ty == "Vec<Entity>"
+        })
         .collect();
 
     let component_name = &component_struct.ident;
 
     let impl_component_with_entity_ref = {
-        if fields.is_empty() {
-            quote! {}
-        } else {
-            let (ref_type, ref_value): (proc_macro2::TokenStream, proc_macro2::TokenStream) = {
-                if fields.len() == 1 {
-                    let field_name = fields[0].ident.as_ref().unwrap();
-                    (
-                        "&'e mut Entity".parse().unwrap(),
-                        quote! {&mut self.#field_name},
-                    )
-                } else {
-                    let mut ref_type_str = String::from("(&'e mut Entity");
-                    let mut ref_value_str = format!(
-                        "(&mut self.{}",
-                        fields[0].ident.as_ref().unwrap().to_string()
-                    );
-                    for field in fields.iter().skip(1) {
-                        ref_type_str += ", &'e mut Entity";
-                        ref_value_str +=
-                            &format!(", &mut self.{}", field.ident.as_ref().unwrap().to_string());
+        let mut fields = fields.iter();
+        match fields.next() {
+            None => {
+                quote! {}
+            }
+            Some(&first) => {
+                let (ref_ident, ref_type): (proc_macro2::TokenStream, proc_macro2::TokenStream) = {
+                    let (first_ref_ident, first_ref_type) = {
+                        let ident = &first.ident;
+                        let ty = &first.ty;
+                        (quote! {&mut self.#ident}, quote! {&'e mut #ty})
+                    };
+
+                    if !fields.is_empty() {
+                        let (mut ref_ident, mut ref_type) = (
+                            format!("({}", first_ref_ident),
+                            format!("({}", first_ref_type),
+                        );
+
+                        for &field in fields {
+                            ref_type +=
+                                &format!(", &'e mut {}", field.ty.to_token_stream().to_string());
+                            ref_ident += &format!(
+                                ", &mut self.{}",
+                                field.ident.to_token_stream().to_string()
+                            );
+                        }
+                        ref_ident += ")";
+                        ref_type += ")";
+
+                        (ref_ident.parse().unwrap(), ref_type.parse().unwrap())
+                    } else {
+                        (first_ref_ident, first_ref_type)
                     }
-                    ref_type_str += ")";
-                    ref_value_str += ")";
+                };
+                quote! {
+                    impl<'e> ComponentWithEntityRef<'e> for #component_name {
+                        type Ref = #ref_type;
 
-                    (
-                        ref_type_str.parse().unwrap(),
-                        ref_value_str.parse().unwrap(),
-                    )
-                }
-            };
-            quote! {
-                impl<'e> ComponentWithEntityRef<'e> for #component_name {
-                    type Ref = #ref_type;
-
-                    fn get_entity_ref(&'e mut self) -> Self::Ref {
-                        #ref_value
+                        fn get_entity_ref(&'e mut self) -> Self::Ref {
+                            #ref_ident
+                        }
                     }
                 }
             }

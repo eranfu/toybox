@@ -1,9 +1,17 @@
 use serde::{Deserialize, Serialize};
 
+use errors::*;
 use tb_ecs::*;
 
+use crate::asset::prefab::Prefab;
 use crate::asset::AssetHandle;
-use crate::prefab::Prefab;
+use crate::path::TbPath;
+
+mod errors {
+    use tb_core::error::*;
+
+    error_chain! {}
+}
 
 #[derive(Deserialize, Serialize)]
 pub struct Level {
@@ -11,13 +19,11 @@ pub struct Level {
 }
 
 impl Level {
-    pub fn from_world(world: &World) -> Self {
-        Self {
-            root: Prefab::from_world(world)
-        }
-    }
-    pub fn attach(&self, world: &mut World) {
-        self.root.attach(world);
+    pub fn create_asset(path: &TbPath, world: &mut World) -> Result<Self> {
+        Ok(Self {
+            root: Prefab::create_asset(path, world, None)
+                .chain_err(|| "Failed to create root prefab.")?,
+        })
     }
 }
 
