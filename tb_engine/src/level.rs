@@ -19,9 +19,9 @@ pub struct Level {
 }
 
 impl Level {
-    pub fn create_asset(path: &TbPath, world: &mut World) -> Result<Self> {
+    pub fn create(path: &TbPath, world: &mut World) -> Result<Self> {
         Ok(Self {
-            root: Prefab::create_asset(path, world, None)
+            root: Prefab::create(path, world, None)
                 .chain_err(|| "Failed to create root prefab.")?,
         })
     }

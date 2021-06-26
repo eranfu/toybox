@@ -7,8 +7,8 @@ use tb_ecs::*;
 
 use crate::app_info::AppInfo;
 use crate::asset::AssetLoader;
+use crate::hierarchy::{Children, Parent, RecursiveChildrenIter};
 use crate::path::TbPath;
-use crate::transform::Children;
 
 mod errors {
     pub use tb_core::error::*;
@@ -23,31 +23,35 @@ pub struct PrefabLink {
 }
 
 #[derive(Deserialize, Serialize)]
-pub struct Prefab {
-    extern_folder: PathBuf,
-}
+pub struct Prefab {}
 
 impl Prefab {
-    pub(crate) fn create_asset(
+    pub(crate) fn create(
         dest_file: &TbPath,
         world: &mut World,
         root: Option<Entity>,
     ) -> Result<Prefab> {
-        let prefab = std::fs::File::create(dest_file.to_absolute())
-            .chain_err(|| "Failed to create prefab file.")?;
         world.insert(AssetLoader::default);
+        let asset_loader = unsafe { world.fetch_mut::<AssetLoader>() };
+        let children_components = unsafe { world.fetch_components::<Children>() };
 
-        let entities = match root {
-            None => {}
-            Some(_) => {}
+        let entities: Box<dyn Iterator<Item = Entity>> = match root {
+            None => {
+                let entities = unsafe { world.fetch::<Entities>() };
+                Box::new(entities.iter())
+            }
+            Some(root) => Box::new(RecursiveChildrenIter::new(children_components, root)),
         };
-        let (asset_loader, children_components) =
-            unsafe { <(Write<AssetLoader>, RAWComponents<Children>) as SystemData>::fetch(world) };
 
         let extern_folder = dest_file
-            .join_prefix_assets_based(AppInfo::extern_dir_name())
-            .chain_err(|| "Failed to get assets based path")?;
+            .join_prefix_assets_based(AppInfo::extern_entity_dir_name())
+            .chain_err(|| "Failed to get assets based path")?
+            .to_absolute();
 
-        bail!("unimplemented")
+        for entity in entities {
+            asset_loader.save()
+        }
     }
+
+    fn entity_path_base_on_root(parents: ComponentStorage<Parent>, entity: Entity, root: Entity) {}
 }

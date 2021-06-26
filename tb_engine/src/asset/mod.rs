@@ -1,12 +1,14 @@
 use std::any::Any;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
+use std::fs::File;
 use std::marker::PhantomData;
+use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::sync::mpsc::TryRecvError;
+use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 
 use errors::*;
-use tb_core::serde::de::DeserializeOwned;
 use tb_ecs::*;
 
 use crate::path::TbPath;
@@ -26,40 +28,76 @@ pub struct AssetHandle<T> {
     _phantom: PhantomData<T>,
 }
 
+pub type AssetArc = Arc<SerdeBox<dyn Asset>>;
+
+#[serde_box]
+trait Asset: Any + Send + Sync + SerdeBoxSer + SerdeBoxDe {
+    fn as_any(&self) -> &dyn Any;
+}
+
 pub struct AssetLoader {
-    id_to_assets: HashMap<u64, Box<dyn Any + Send>>,
+    id_to_assets: HashMap<u64, AssetArc>,
     path_to_ids: HashMap<PathBuf, u64>,
-    loading_pool: thread_pool::ThreadPool,
-    completed_assets_sender: std::sync::mpsc::Sender<(u64, Result<Box<dyn Any + Send>>)>,
-    completed_assets_receiver: std::sync::mpsc::Receiver<(u64, Result<Box<dyn Any + Send>>)>,
     next_id: u64,
+    threads: thread_pool::ThreadPool,
+    id_to_pending_channel: HashMap<
+        u64,
+        (
+            Sender<PathBuf>,
+            Sender<(PathBuf, AssetArc)>,
+            Arc<Mutex<(Receiver<PathBuf>, Receiver<(PathBuf, AssetArc)>)>>,
+        ),
+    >,
+    completed_assets_channel: (
+        Sender<(u64, Result<AssetArc>)>,
+        Receiver<(u64, Result<AssetArc>)>,
+    ),
 }
 
 ///
 /// # Safety
 ///
-/// Don't use `completed_assets_sender` and `completed_assets_receiver` in immutable methods
+/// Don't use `completed_assets_channel` and `id_to_pending_channel` in immutable methods
 unsafe impl Sync for AssetLoader {}
 
 impl AssetLoader {
-    pub fn load<T: 'static + Any + Send + for<'de> serde::Deserialize<'de>>(
-        &mut self,
-        path: TbPath,
-    ) -> AssetHandle<T> {
+    pub fn load<T: Asset>(&mut self, path: TbPath) -> AssetHandle<T> {
         let id = match self.path_to_ids.entry(path.into()) {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {
                 let id = self.next_id;
-                self.next_id += 1;
-                let sender = self.completed_assets_sender.clone();
-                let path = vacant.key().clone();
-                self.loading_pool.execute(move || {
-                    sender.send(Self::load_block::<T>(id, &path)).unwrap();
-                });
                 vacant.insert(id);
+                self.next_id += 1;
+                let (pending_load_sender, _, pending_receiver) =
+                    self.get_or_new_pending_channel(id);
+                pending_load_sender.send(vacant.into_key());
+
+                let pending_receiver = pending_receiver.clone();
+                let completed_sender = self.completed_assets_channel.0.clone();
+                self.threads.execute(move || {
+                    Self::process_pending_task(id, pending_receiver, completed_sender)
+                });
                 id
             }
         };
+        AssetHandle {
+            id,
+            _phantom: Default::default(),
+        }
+    }
+
+    pub fn save<T: Asset>(&mut self, path: TbPath, asset: Box<T>) -> AssetHandle<T> {
+        let id = match self.path_to_ids.entry(path.into()) {
+            Entry::Occupied(occupied) => *occupied.get(),
+            Entry::Vacant(vacant) => {
+                let id = self.next_id;
+                vacant.insert(id);
+                self.next_id += 1;
+                id
+            }
+        };
+        let asset: AssetArc = Arc::new(SerdeBox(asset as Box<dyn Asset>));
+        self.id_to_assets.insert(id, asset.clone());
 
         AssetHandle {
             id,
@@ -67,89 +105,118 @@ impl AssetLoader {
         }
     }
 
-    pub fn update(&mut self) -> Result<()> {
-        loop {
-            let asset = match self.completed_assets_receiver.try_recv() {
-                Ok(asset) => asset,
-                Err(e) => match e {
-                    TryRecvError::Empty => {
-                        break;
+    pub fn update(&mut self) {
+        self.completed_assets_channel
+            .1
+            .try_iter()
+            .for_each(|(id, asset)| {
+                match asset {
+                    Ok(asset) => {
+                        self.id_to_assets.insert(id, asset);
                     }
-                    TryRecvError::Disconnected => {
-                        return Err(Error::with_chain(
-                            e,
-                            "AssetLoader::completed_assets_receiver disconnected",
-                        ));
-                    }
-                },
-            };
-
-            let (id, asset) = (
-                asset.0,
-                match asset.1 {
-                    Ok(asset) => asset,
                     Err(e) => {
                         eprintln!("{}", e.display_chain());
-                        continue;
+                        self.id_to_assets.remove(&id);
+                        return;
                     }
-                },
-            );
-
-            assert!(self.id_to_assets.insert(id, asset).is_none());
-        }
-
-        Ok(())
+                };
+            });
     }
 
     pub fn get<T: 'static>(&self, handle: AssetHandle<T>) -> Option<&T> {
-        self.id_to_assets
-            .get(&handle.id)
-            .map(|asset| asset.downcast_ref().unwrap())
+        match self.id_to_assets.get(&handle.id) {
+            None => None,
+            Some(asset) => asset.as_any().downcast_ref(),
+        }
     }
 
-    fn load_block<T: 'static + Send + DeserializeOwned>(
-        id: u64,
-        path: &Path,
-    ) -> (u64, Result<Box<dyn Any + Send>>) {
-        let file = match std::fs::File::open(path) {
+    fn save_block(path: impl AsRef<Path>, asset: AssetArc) -> Result<AssetArc> {
+        let path = path.as_ref();
+        let file = match Self::open_file(path) {
             Ok(file) => file,
             Err(e) => {
-                return (
-                    id,
-                    Err(Error::with_chain(
-                        e,
-                        format!("Failed to open asset file. path: {:?}", path),
-                    )),
-                )
+                return Err(e);
             }
         };
+        serde_json::to_writer(file, asset.deref())
+            .chain_err(|| format!("Failed to serialize asset. path: {:?}", path))?;
+        Ok(asset)
+    }
 
-        let res: T = match serde_json::from_reader(file) {
-            Ok(res) => res,
+    fn load_block(path: impl AsRef<Path>) -> Result<AssetArc> {
+        let path = path.as_ref();
+        let file = Self::open_file(path)?;
+        let res: AssetArc = Arc::new(
+            serde_json::from_reader(file)
+                .chain_err(|| format!("Failed to deserialize asset. path: {:?}", path))?,
+        );
+        Ok(res)
+    }
+
+    fn open_file(path: &Path) -> Result<File> {
+        std::fs::File::open(path)
+            .chain_err(|| format!("Failed to open asset file. path: {:?}", path))
+    }
+
+    fn process_pending_task(
+        id: u64,
+        pending_receiver: Arc<Mutex<(Receiver<PathBuf>, Receiver<(PathBuf, AssetArc)>)>>,
+        completed_sender: Sender<(u64, Result<AssetArc>)>,
+    ) {
+        let mut pending_receiver = match pending_receiver.lock() {
+            Ok(receiver) => receiver,
             Err(e) => {
-                return (
+                completed_sender.send((
                     id,
                     Err(Error::with_chain(
-                        e,
-                        format!("Failed to deserialize asset. path: {:?}", path),
+                        Error::from(e.to_string()),
+                        "Failed to lock pending_receiver.",
                     )),
-                )
+                ));
+                return;
             }
         };
-        (id, Ok(Box::new(res)))
+        let (pending_load_receiver, pending_save_receiver) = pending_receiver.deref();
+        if let Some((path, asset)) = pending_save_receiver.try_iter().last() {
+            pending_load_receiver.try_iter().last();
+            completed_sender.send((id, Self::save_block(path, asset)));
+            return;
+        }
+
+        if let Some(path) = pending_load_receiver.try_iter().last() {
+            completed_sender.send((id, Self::load_block(path)));
+        }
+    }
+
+    fn get_or_new_pending_channel(
+        &mut self,
+        id: u64,
+    ) -> &(
+        Sender<PathBuf>,
+        Sender<(PathBuf, AssetArc)>,
+        Arc<Mutex<(Receiver<PathBuf>, Receiver<(PathBuf, AssetArc)>)>>,
+    ) {
+        self.id_to_pending_channel.entry(id).or_insert_with(|| {
+            let (pending_load_sender, pending_load_receiver) = channel();
+            let (pending_save_sender, pending_save_receiver) = channel();
+            (
+                pending_load_sender,
+                pending_save_sender,
+                Arc::new(Mutex::new((pending_load_receiver, pending_save_receiver))),
+            )
+        })
     }
 }
 
 impl Default for AssetLoader {
     fn default() -> Self {
-        let (sender, receiver) = std::sync::mpsc::channel();
         Self {
             id_to_assets: Default::default(),
             path_to_ids: Default::default(),
-            loading_pool: Default::default(),
-            completed_assets_sender: sender,
-            completed_assets_receiver: receiver,
             next_id: 0,
+            threads: Default::default(),
+            id_to_pending_channel: Default::default(),
+            completed_assets_channel: channel(),
         }
     }
 }
@@ -161,8 +228,6 @@ impl<'s> System<'s> for LoadAssetSystem {
     type SystemData = Write<'s, AssetLoader>;
 
     fn run(&mut self, mut asset_loader: Self::SystemData) {
-        if let Some(err) = asset_loader.update().err() {
-            eprintln!("{}", err.display_chain());
-        }
+        asset_loader.update()
     }
 }

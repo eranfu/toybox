@@ -53,7 +53,7 @@ impl Entities {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
-    pub(crate) fn iter(&self) -> EntitiesIter<'_> {
+    pub fn iter(&self) -> EntitiesIter<'_> {
         EntitiesIter::new(self.read())
     }
     pub fn is_alive(&self, entity: Entity) -> bool {

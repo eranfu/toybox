@@ -3,6 +3,11 @@ use std::collections::LinkedList;
 use tb_ecs::*;
 
 #[component]
+pub struct Name {
+    name: String,
+}
+
+#[component]
 pub struct Parent {
     parent: Entity,
 }
@@ -18,7 +23,7 @@ pub struct RecursiveChildrenIter<'s> {
 }
 
 impl<'s> RecursiveChildrenIter<'s> {
-    fn new(children_components: &'s ComponentStorage<Children>, root: Entity) -> Self {
+    pub fn new(children_components: &'s ComponentStorage<Children>, root: Entity) -> Self {
         let mut stack = LinkedList::new();
         stack.push_back((root, Self::get_children(children_components, root)));
         RecursiveChildrenIter {
@@ -72,7 +77,7 @@ impl<'s> Iterator for RecursiveChildrenIter<'s> {
 mod tests {
     use tb_ecs::*;
 
-    use crate::transform::{Children, RecursiveChildrenIter};
+    use crate::hierarchy::{Children, RecursiveChildrenIter};
 
     #[test]
     fn recursive_children_iter() {

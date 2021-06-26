@@ -67,7 +67,7 @@ impl AppInfo {
         "assets"
     }
 
-    pub fn extern_dir_name() -> &'static str {
-        "__EXTERN__"
+    pub fn extern_entity_dir_name() -> &'static str {
+        "__EXTERN_ENTITY__"
     }
 }

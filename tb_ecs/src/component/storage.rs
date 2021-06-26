@@ -8,7 +8,7 @@ use crate::{join, Component, Entities, Entity, EntityRef};
 
 #[derive(Serialize, Deserialize)]
 pub struct ComponentStorage<C: Component> {
-    data: Vec<C>,
+    components: Vec<C>,
     entities: Vec<Entity>,
     entity_to_index: EntityToIndex,
 }
@@ -26,18 +26,18 @@ impl<T: Component> ComponentStorage<T> {
         self.entity_to_index.contains(entity)
     }
     pub fn len(&self) -> usize {
-        self.data.len()
+        self.components.len()
     }
     pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        self.components.is_empty()
     }
 
     pub fn insert(&mut self, entity: Entity, elem: T) {
         match self.entity_to_index.entry(entity) {
-            Entry::Occupied(occupied) => self.data[*occupied.get()] = elem,
+            Entry::Occupied(occupied) => self.components[*occupied.get()] = elem,
             Entry::Vacant(vacant) => {
-                vacant.insert(self.data.len());
-                self.data.push(elem);
+                vacant.insert(self.components.len());
+                self.components.push(elem);
                 self.entities.push(entity);
             }
         }
@@ -47,7 +47,7 @@ impl<T: Component> ComponentStorage<T> {
         if let Some(removed_index) = self.entity_to_index.remove(&entity) {
             let last_entity = *self.entities.last().unwrap();
             self.entities.swap_remove(removed_index);
-            self.data.swap_remove(removed_index);
+            self.components.swap_remove(removed_index);
             if last_entity != entity {
                 self.entity_to_index.insert(last_entity, removed_index);
             }
@@ -57,13 +57,13 @@ impl<T: Component> ComponentStorage<T> {
     pub fn get(&self, entity: Entity) -> Option<&T> {
         self.entity_to_index
             .get(&entity)
-            .map(|&index| &self.data[index])
+            .map(|&index| &self.components[index])
     }
 
     pub fn get_mut(&mut self, entity: Entity) -> Option<&mut T> {
         match self.entity_to_index.get(&entity) {
             None => None,
-            Some(&index) => Some(&mut self.data[index]),
+            Some(&index) => Some(&mut self.components[index]),
         }
     }
 }
@@ -71,7 +71,7 @@ impl<T: Component> ComponentStorage<T> {
 impl<T: Component> Default for ComponentStorage<T> {
     fn default() -> Self {
         Self {
-            data: Default::default(),
+            components: Default::default(),
             entities: Default::default(),
             entity_to_index: Default::default(),
         }
