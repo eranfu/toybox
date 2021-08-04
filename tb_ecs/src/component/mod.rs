@@ -4,7 +4,7 @@ use std::ops::Not;
 pub use anti_components::*;
 pub use registry::*;
 pub use storage::*;
-pub use tb_core::serde::*;
+pub use tb_core::*;
 
 use crate::*;
 
@@ -21,7 +21,7 @@ pub trait EntityRef {
 
 pub trait ComponentWithEntityRef<'e>: Component {
     type Ref: 'e + EntityRef;
-    fn get_entity_ref(&'e mut self) -> Self::Ref;
+    fn mut_entity_ref(&'e mut self) -> Self::Ref;
 }
 
 pub struct Components<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
@@ -30,7 +30,7 @@ pub struct Components<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
     _phantom: PhantomData<(C, A)>,
 }
 
-pub trait Storage {
+pub trait Storage: Sync {
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
@@ -38,11 +38,10 @@ pub trait Storage {
     fn contains(&self, entity: Entity) -> bool;
 }
 
-pub type ReadComponents<'r, C, A> = Components<'r, &'r ComponentStorage<C>, C, A>;
-pub type RBWComponents<'r, C> = ReadComponents<'r, C, access_order::ReadBeforeWrite>;
-pub type RAWComponents<'r, C> = ReadComponents<'r, C, access_order::ReadAfterWrite>;
-pub type WriteComponents<'r, C> =
-    Components<'r, &'r mut ComponentStorage<C>, C, access_order::Write>;
+pub type ReadComps<'r, C, A> = Components<'r, &'r ComponentStorage<C>, C, A>;
+pub type RBWComps<'r, C> = ReadComps<'r, C, access_order::ReadBeforeWrite>;
+pub type RAWComps<'r, C> = ReadComps<'r, C, access_order::ReadAfterWrite>;
+pub type WriteComps<'r, C> = Components<'r, &'r mut ComponentStorage<C>, C, access_order::Write>;
 
 impl<'r, C: Component> Storage for &'r ComponentStorage<C> {
     fn len(&self) -> usize {
@@ -95,7 +94,7 @@ macro_rules! impl_entity_ref_tuple {
 
 impl_entity_ref_tuple!(E0, E1, E2, E3, E4, E5, E6, E7);
 
-impl<'r, C: Component, A: AccessOrder> Not for &'r ReadComponents<'r, C, A> {
+impl<'r, C: Component, A: AccessOrder> Not for &'r ReadComps<'r, C, A> {
     type Output = anti_components::AntiComponents<'r, &'r ComponentStorage<C>, C, A>;
 
     fn not(self) -> Self::Output {
@@ -103,7 +102,7 @@ impl<'r, C: Component, A: AccessOrder> Not for &'r ReadComponents<'r, C, A> {
     }
 }
 
-impl<'r, C: Component> Not for &'r mut WriteComponents<'r, C> {
+impl<'r, C: Component> Not for &'r mut WriteComps<'r, C> {
     type Output =
         anti_components::AntiComponents<'r, &'r mut ComponentStorage<C>, C, access_order::Write>;
 
@@ -112,11 +111,16 @@ impl<'r, C: Component> Not for &'r mut WriteComponents<'r, C> {
     }
 }
 
-impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComponents<'r, C, A> {
+impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComps<'r, C, A> {
     type Element = C;
     type ElementFetcher = &'r ComponentStorage<C>;
 
-    fn open(mut self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
+    fn open(
+        mut self,
+    ) -> (
+        Box<dyn 'r + Iterator<Item = Entity> + Send>,
+        Self::ElementFetcher,
+    ) {
         (self.storage.entity_iter(), self.elem_fetcher())
     }
 
@@ -132,7 +136,7 @@ impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComponents<'r, C, A>
         self.storage
     }
 
-    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity>> {
+    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity> + Send> {
         Box::new(self.storage.entity_iter())
     }
 
@@ -141,11 +145,16 @@ impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComponents<'r, C, A>
     }
 }
 
-impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
+impl<'r, C: Component> Join<'r> for &'r mut WriteComps<'r, C> {
     type Element = C;
     type ElementFetcher = &'r mut ComponentStorage<C>;
 
-    fn open(self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
+    fn open(
+        self,
+    ) -> (
+        Box<dyn 'r + Iterator<Item = Entity> + Send>,
+        Self::ElementFetcher,
+    ) {
         let storage = unsafe { &mut *(&mut self.storage as *mut _ as *mut _) };
         (self.get_matched_entities(), storage)
     }
@@ -163,9 +172,8 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
         s.storage
     }
 
-    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity>> {
-        let components: &'r WriteComponents<'r, C> =
-            unsafe { &*(self as *const &mut _ as *const _) };
+    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity> + Send> {
+        let components: &'r WriteComps<'r, C> = unsafe { &*(self as *const &mut _ as *const _) };
         components.storage.entity_iter()
     }
 
@@ -174,7 +182,7 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComponents<'r, C> {
     }
 }
 
-impl<'r, C: Component, A: AccessOrder> ReadComponents<'r, C, A> {
+impl<'r, C: Component, A: AccessOrder> ReadComps<'r, C, A> {
     unsafe fn new(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
@@ -184,7 +192,7 @@ impl<'r, C: Component, A: AccessOrder> ReadComponents<'r, C, A> {
     }
 }
 
-impl<'r, C: Component> WriteComponents<'r, C> {
+impl<'r, C: Component> WriteComps<'r, C> {
     unsafe fn new(world: &'r World) -> Self {
         Self {
             entities: world.fetch(),
@@ -198,7 +206,7 @@ impl<'r, C: Component> WriteComponents<'r, C> {
     }
 }
 
-impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
+impl<'r, C: Component> SystemData<'r> for RBWComps<'r, C> {
     unsafe fn fetch(world: &'r World) -> Self {
         Self::new(world)
     }
@@ -211,7 +219,7 @@ impl<'r, C: Component> SystemData<'r> for RBWComponents<'r, C> {
     }
 }
 
-impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
+impl<'r, C: Component> SystemData<'r> for WriteComps<'r, C> {
     unsafe fn fetch(world: &'r World) -> Self {
         Self::new(world)
     }
@@ -225,7 +233,7 @@ impl<'r, C: Component> SystemData<'r> for WriteComponents<'r, C> {
     }
 }
 
-impl<'r, C: Component> SystemData<'r> for RAWComponents<'r, C> {
+impl<'r, C: Component> SystemData<'r> for RAWComps<'r, C> {
     unsafe fn fetch(world: &'r World) -> Self {
         Self::new(world)
     }
@@ -265,6 +273,7 @@ impl World {
 
 #[cfg(test)]
 mod tests {
+    use tb_core::*;
     use tb_ecs_macro::*;
 
     use crate::component::storage::ComponentStorage;
@@ -286,8 +295,8 @@ mod tests {
         world.insert(Entities::default);
         world.insert(ComponentStorage::<Component1>::default);
         world.insert(ComponentStorage::<Component2>::default);
-        let components1 = unsafe { RAWComponents::<Component1>::fetch(&world) };
-        let mut components2 = unsafe { WriteComponents::<Component2>::fetch(&world) };
+        let components1 = unsafe { RAWComps::<Component1>::fetch(&world) };
+        let mut components2 = unsafe { WriteComps::<Component2>::fetch(&world) };
         for _x in (&components1, &mut components2).join() {
             unreachable!()
         }
@@ -297,8 +306,8 @@ mod tests {
             .with(Component1 { value1: 1 })
             .with(Component2 { value2: 2 })
             .create();
-        let components1 = unsafe { RAWComponents::<Component1>::fetch(&world) };
-        let mut components2 = unsafe { WriteComponents::<Component2>::fetch(&world) };
+        let components1 = unsafe { RAWComps::<Component1>::fetch(&world) };
+        let mut components2 = unsafe { WriteComps::<Component2>::fetch(&world) };
         let (v1, v2): (&Component1, &mut Component2) =
             (&components1, &mut components2).join().next().unwrap();
         assert_eq!(v1.value1, 1);
@@ -319,7 +328,7 @@ mod tests {
             .create();
 
         let (components1, components2) =
-            unsafe { <(RBWComponents<Component1>, RBWComponents<Component2>)>::fetch(&world) };
+            unsafe { <(RBWComps<Component1>, RBWComps<Component2>)>::fetch(&world) };
         let mut has = false;
         for (component1, component2) in (&components1, &components2).join() {
             has = true;
@@ -347,7 +356,7 @@ mod tests {
             .create_entity()
             .with(Component1 { value1: 10 })
             .create();
-        let mut components1 = unsafe { WriteComponents::<Component1>::fetch(&world) };
+        let mut components1 = unsafe { WriteComps::<Component1>::fetch(&world) };
         for component1 in (&mut components1).join() {
             assert_eq!(component1.value1, 10);
         }

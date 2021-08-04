@@ -188,7 +188,7 @@ impl SystemInfo {
         self.type_id
     }
 
-    pub fn is_resource_matched(&self, world: &World) -> bool {
+    pub fn is_resources_existed(&self, world: &World) -> bool {
         self.reads_after_write
             .par_iter()
             .chain(self.reads_before_write.par_iter())

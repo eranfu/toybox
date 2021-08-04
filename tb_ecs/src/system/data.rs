@@ -36,7 +36,7 @@ pub(crate) mod access_order {
 
     pub struct ReadAfterWrite;
 
-    pub trait AccessOrder {}
+    pub trait AccessOrder: Sync {}
 
     impl AccessOrder for ReadBeforeWrite {}
 

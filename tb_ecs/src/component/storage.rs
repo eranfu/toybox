@@ -18,7 +18,7 @@ impl<T: Component> ComponentStorage<T> {
         (self.entities.iter(), self)
     }
 
-    pub(crate) fn entity_iter(&self) -> Box<dyn '_ + Iterator<Item = Entity>> {
+    pub(crate) fn entity_iter(&self) -> Box<dyn '_ + Iterator<Item = Entity> + Send> {
         Box::new(self.entities.iter().copied())
     }
 

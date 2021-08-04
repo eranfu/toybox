@@ -26,6 +26,8 @@ crate-type = ["dylib", "rlib"]
 
 [dependencies]
 error-chain = "0.12.4"
+serde = { version = "1.0.125", features = ["derive"] }
+
 tb_core = { path = "tb_core" }
 tb_engine = { path = "tb_engine" }
 tb_ecs = { path = "tb_ecs" }

@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use tb_core::serde::*;
+use tb_core::*;
 use tb_ecs::Component;
 
 #[derive(Serialize, Deserialize)]

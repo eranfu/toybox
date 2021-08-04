@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use rayon::prelude::*;
+
 use crate::*;
 
 pub struct AntiComponents<'r, S: 'r + Storage, C: Component, A: AccessOrder> {
@@ -20,7 +22,12 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Join<'r> for AntiCompone
     type Element = AntiComponent<C>;
     type ElementFetcher = AntiComponentsFetch<'r, S, C, A>;
 
-    fn open(mut self) -> (Box<dyn 'r + Iterator<Item = Entity>>, Self::ElementFetcher) {
+    fn open(
+        mut self,
+    ) -> (
+        Box<dyn 'r + Iterator<Item = Entity> + Send>,
+        Self::ElementFetcher,
+    ) {
         (self.get_matched_entities(), self.elem_fetcher())
     }
 
@@ -38,7 +45,7 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Join<'r> for AntiCompone
         }
     }
 
-    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity>> {
+    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity> + Send> {
         let storage = &self.components.storage;
         Box::new(
             self.entities()
@@ -92,7 +99,7 @@ mod tests {
     fn get_none() {
         let mut world = World::default();
         let entity = world.create_entity().with(Comp {}).create();
-        let mut comps = unsafe { WriteComponents::<Comp>::fetch(&world) };
+        let mut comps = unsafe { WriteComps::<Comp>::fetch(&world) };
         let mut not_comps = !(&mut comps);
         assert_eq!(not_comps.elem_fetcher().fetch_elem(entity), None);
     }

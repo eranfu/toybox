@@ -73,7 +73,7 @@ impl Scheduler {
         let systems = sr.systems();
         let infos: Vec<_> = systems
             .par_iter()
-            .filter(|(&system_info, _node)| system_info.is_resource_matched(world))
+            .filter(|(&system_info, _node)| system_info.is_resources_existed(world))
             .collect();
 
         let mut info_to_index = HashMap::with_capacity(infos.len());

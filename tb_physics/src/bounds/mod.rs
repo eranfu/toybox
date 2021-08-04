@@ -1,5 +1,4 @@
-use tb_core::math::*;
-use tb_core::serde::*;
+use tb_core::*;
 
 #[derive(Serialize, Deserialize)]
 pub enum Bounds {
@@ -10,18 +9,18 @@ pub enum Bounds {
 
 #[derive(Serialize, Deserialize)]
 pub struct SphereBounds {
-    center: Point3<f32>,
+    center: Vec3,
     radius: f32,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct BoxBounds {
-    center: Point3<f32>,
-    extends: Vector3<f32>,
+    center: Vec3,
+    extends: Vec3,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct RectBounds {
-    center: Point2<f32>,
-    extends: Vector2<f32>,
+    center: Vec3,
+    extends: Vec3,
 }

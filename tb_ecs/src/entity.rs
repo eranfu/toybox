@@ -4,14 +4,17 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::iter::{Copied, Flatten, Fuse};
 use std::ops::{Deref, DerefMut, Index, IndexMut};
-use std::slice::Iter;
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bit_set::BitSet;
+use rayon::iter::plumbing::UnindexedConsumer;
+use rayon::iter::ParallelIterator;
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::algorithm::topological_sort::Iter;
 use crate::registry::{ComponentIndex, ComponentRegistry};
-use crate::{Component, Join, SystemData, World, WriteComponents};
+use crate::{Component, Join, SystemData, World, WriteComps};
 
 #[derive(Deserialize, Serialize, Copy, Clone, Hash, PartialEq, Eq, Debug)]
 pub struct Entity {
@@ -155,14 +158,16 @@ impl EntitiesInner {
                 return;
             }
         };
-
+        if self.archetypes_component_mask[entity_index.archetype].contains(*component_index) {
+            return;
+        }
         let next_archetype = self.archetypes_add_to_next[entity_index.archetype]
             .get(&component_index)
             .copied();
         let next_archetype = next_archetype.unwrap_or_else(|| {
             let mut next_mask = self.archetypes_component_mask[entity_index.archetype].clone();
             next_mask.insert(*component_index);
-            let next_archetype = self.get_or_insert_archetype(next_mask);
+            let next_archetype = self.find_or_insert_archetype(next_mask);
             self.archetypes_add_to_next[entity_index.archetype]
                 .insert(component_index, next_archetype);
             next_archetype
@@ -190,7 +195,7 @@ impl EntitiesInner {
         let id = self.next_id;
         self.next_id += 1;
         let entity = Entity { id };
-        let archetype = self.get_or_insert_archetype(ComponentMask::default());
+        let archetype = self.find_or_insert_archetype(ComponentMask::default());
         let new_entity_index = self.push_entity(archetype, entity);
         self.entity_to_index.insert(entity, new_entity_index);
         self.len += 1;
@@ -204,7 +209,7 @@ impl EntitiesInner {
         EntityIndex::new(archetype, index_in_archetype)
     }
 
-    fn get_or_insert_archetype(&mut self, mask: ComponentMask) -> ArchetypeIndex {
+    fn find_or_insert_archetype(&mut self, mask: ComponentMask) -> ArchetypeIndex {
         match self.component_mask_to_archetype_index.entry(mask) {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {
@@ -253,7 +258,7 @@ impl IndexMut<EntityIndex> for Vec<Vec<Entity>> {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
 pub(crate) struct ArchetypeIndex(pub(crate) usize);
 
 impl Deref for ArchetypeIndex {
@@ -321,7 +326,7 @@ pub struct EntityCreator<'r> {
 impl EntityCreator<'_> {
     pub fn with<C: Component>(&mut self, c: C) -> &mut Self {
         self.world.insert_components::<C>();
-        let mut components = unsafe { WriteComponents::<C>::fetch(self.world) };
+        let mut components = unsafe { WriteComps::<C>::fetch(self.world) };
         components.insert(self.entity, c);
         self
     }
@@ -357,7 +362,7 @@ pub struct EntitiesIter<'e> {
 
 impl<'e> EntitiesIter<'e> {
     fn new(guard: RwLockReadGuard<EntitiesInner>) -> EntitiesIter {
-        let inner = unsafe { std::mem::transmute(guard.iter()) };
+        let inner = unsafe { std::mem::transmute(guard.par_iter()) };
         EntitiesIter {
             _guard: guard,
             inner,
@@ -365,11 +370,16 @@ impl<'e> EntitiesIter<'e> {
     }
 }
 
-impl<'e> Iterator for EntitiesIter<'e> {
+unsafe impl<'e> Send for EntitiesIter<'e> {}
+
+impl<'e> ParallelIterator for EntitiesIter<'e> {
     type Item = Entity;
 
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner.next().copied()
+    fn drive_unindexed<C>(self, consumer: C) -> C::Result
+    where
+        C: UnindexedConsumer<Self::Item>,
+    {
+        todo!()
     }
 }
 

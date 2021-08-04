@@ -73,7 +73,7 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     impl<'e> ComponentWithEntityRef<'e> for #component_name {
                         type Ref = #ref_type;
 
-                        fn get_entity_ref(&'e mut self) -> Self::Ref {
+                        fn mut_entity_ref(&'e mut self) -> Self::Ref {
                             #ref_ident
                         }
                     }
