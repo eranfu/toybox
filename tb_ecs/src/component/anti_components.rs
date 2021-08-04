@@ -1,5 +1,6 @@
 use std::marker::PhantomData;
 
+use rayon::iter::Filter;
 use rayon::prelude::*;
 
 use crate::*;
@@ -21,13 +22,9 @@ pub struct AntiComponent<C: Component> {
 impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Join<'r> for AntiComponents<'r, S, C, A> {
     type Element = AntiComponent<C>;
     type ElementFetcher = AntiComponentsFetch<'r, S, C, A>;
+    type EntitiesIter = Filter<ParEntitiesIter<'r>, impl Fn(&Entity) -> bool + Sync + Send>;
 
-    fn open(
-        mut self,
-    ) -> (
-        Box<dyn 'r + Iterator<Item = Entity> + Send>,
-        Self::ElementFetcher,
-    ) {
+    fn open(mut self) -> (Self::EntitiesIter, Self::ElementFetcher) {
         (self.get_matched_entities(), self.elem_fetcher())
     }
 
@@ -45,13 +42,11 @@ impl<'r, S: 'r + Storage, C: Component, A: AccessOrder> Join<'r> for AntiCompone
         }
     }
 
-    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity> + Send> {
+    fn get_matched_entities(&self) -> Self::EntitiesIter {
         let storage = &self.components.storage;
-        Box::new(
-            self.entities()
-                .iter()
-                .filter(move |&entity| !storage.contains(entity)),
-        )
+        self.entities()
+            .par_iter()
+            .filter(move |&entity| !storage.contains(entity))
     }
 
     fn fill_matcher(matcher: &mut ArchetypeMatcher) {

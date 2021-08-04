@@ -1,35 +1,20 @@
-use std::ops::{AddAssign, Mul};
+pub use cgmath::prelude::*;
 
-pub use nalgebra_glm::*;
+pub type NumType = f32;
 
-use crate::serde::*;
+pub type Vector1 = cgmath::Vector1<NumType>;
+pub type Vector2 = cgmath::Vector2<NumType>;
+pub type Vector3 = cgmath::Vector3<NumType>;
+pub type Vector4 = cgmath::Vector4<NumType>;
 
-#[derive(Copy, Clone, PartialEq, Serialize, Deserialize)]
-pub struct EulerAngle(Vec3);
+pub type Point1 = cgmath::Point1<NumType>;
+pub type Point2 = cgmath::Point2<NumType>;
+pub type Point3 = cgmath::Point3<NumType>;
 
-impl EulerAngle {
-    pub fn new(roll: f32, pitch: f32, yaw: f32) -> Self {
-        Self::from(Vec3::new(roll, pitch, yaw))
-    }
-}
+pub type Quaternion = cgmath::Quaternion<NumType>;
 
-impl From<Vec3> for EulerAngle {
-    fn from(vec: Vec3) -> Self {
-        Self(vec)
-    }
-}
+pub type Matrix2 = cgmath::Matrix2<NumType>;
+pub type Matrix3 = cgmath::Matrix3<NumType>;
+pub type Matrix4 = cgmath::Matrix4<NumType>;
 
-impl Mul<f32> for EulerAngle {
-    type Output = EulerAngle;
-
-    fn mul(mut self, rhs: f32) -> Self::Output {
-        self.0 *= rhs;
-        self
-    }
-}
-
-impl AddAssign for EulerAngle {
-    fn add_assign(&mut self, rhs: Self) {
-        self.0 += rhs.0;
-    }
-}
+pub type Euler = cgmath::Euler<NumType>;

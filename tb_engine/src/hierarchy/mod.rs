@@ -46,7 +46,7 @@ impl<'s> RecursiveChildrenIter<'s> {
         entity: Entity,
     ) -> Option<std::slice::Iter<'s, Entity>> {
         children_components
-            .get(entity)
+            .fetch(entity)
             .map(|children| children.children.iter())
     }
 }
@@ -71,7 +71,7 @@ impl<'s> Iterator for RecursiveChildrenIter<'s> {
                             top_child,
                             Self::get_children(self.children_components, top_child),
                         ));
-                        let name = self.names.get(top_child).unwrap();
+                        let name = self.names.fetch(top_child).unwrap();
                         self.path.push(&name.name);
                         continue;
                     }

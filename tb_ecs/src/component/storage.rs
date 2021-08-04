@@ -2,6 +2,7 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::slice::Iter;
 
+use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{join, Component, Entities, Entity, EntityRef};
@@ -18,8 +19,8 @@ impl<T: Component> ComponentStorage<T> {
         (self.entities.iter(), self)
     }
 
-    pub(crate) fn entity_iter(&self) -> Box<dyn '_ + Iterator<Item = Entity> + Send> {
-        Box::new(self.entities.iter().copied())
+    pub(crate) fn par_entity_iter(&self) -> rayon::iter::Copied<rayon::slice::Iter<Entity>> {
+        self.entities.par_iter().copied()
     }
 
     pub fn contains(&self, entity: Entity) -> bool {
@@ -54,13 +55,13 @@ impl<T: Component> ComponentStorage<T> {
         }
     }
 
-    pub fn get(&self, entity: Entity) -> Option<&T> {
+    pub fn fetch(&self, entity: Entity) -> Option<&T> {
         self.entity_to_index
             .get(&entity)
             .map(|&index| &self.components[index])
     }
 
-    pub fn get_mut(&mut self, entity: Entity) -> Option<&mut T> {
+    pub fn fetch_mut(&mut self, entity: Entity) -> Option<&mut T> {
         match self.entity_to_index.get(&entity) {
             None => None,
             Some(&index) => Some(&mut self.components[index]),
@@ -82,7 +83,7 @@ impl<'s, T: Component> join::ElementFetcher for &'s ComponentStorage<T> {
     type Element = &'s T;
 
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {
-        self.get(entity)
+        self.fetch(entity)
     }
 }
 
@@ -91,7 +92,7 @@ impl<'s, T: Component> join::ElementFetcher for &'s mut ComponentStorage<T> {
 
     fn fetch_elem(&mut self, entity: Entity) -> Option<Self::Element> {
         let s: &'s mut Self = unsafe { std::mem::transmute(self) };
-        s.get_mut(entity)
+        s.fetch_mut(entity)
     }
 }
 

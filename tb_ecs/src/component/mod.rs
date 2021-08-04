@@ -114,14 +114,10 @@ impl<'r, C: Component> Not for &'r mut WriteComps<'r, C> {
 impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComps<'r, C, A> {
     type Element = C;
     type ElementFetcher = &'r ComponentStorage<C>;
+    type EntitiesIter = rayon::iter::Copied<rayon::slice::Iter<'r, Entity>>;
 
-    fn open(
-        mut self,
-    ) -> (
-        Box<dyn 'r + Iterator<Item = Entity> + Send>,
-        Self::ElementFetcher,
-    ) {
-        (self.storage.entity_iter(), self.elem_fetcher())
+    fn open(mut self) -> (Self::EntitiesIter, Self::ElementFetcher) {
+        (self.storage.par_entity_iter(), self.elem_fetcher())
     }
 
     fn entities(&self) -> &'r Entities {
@@ -136,8 +132,8 @@ impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComps<'r, C, A> {
         self.storage
     }
 
-    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity> + Send> {
-        Box::new(self.storage.entity_iter())
+    fn get_matched_entities(&self) -> Self::EntitiesIter {
+        self.storage.par_entity_iter()
     }
 
     fn fill_matcher(matcher: &mut ArchetypeMatcher) {
@@ -148,13 +144,9 @@ impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComps<'r, C, A> {
 impl<'r, C: Component> Join<'r> for &'r mut WriteComps<'r, C> {
     type Element = C;
     type ElementFetcher = &'r mut ComponentStorage<C>;
+    type EntitiesIter = rayon::iter::Copied<rayon::slice::Iter<'r, Entity>>;
 
-    fn open(
-        self,
-    ) -> (
-        Box<dyn 'r + Iterator<Item = Entity> + Send>,
-        Self::ElementFetcher,
-    ) {
+    fn open(self) -> (Self::EntitiesIter, Self::ElementFetcher) {
         let storage = unsafe { &mut *(&mut self.storage as *mut _ as *mut _) };
         (self.get_matched_entities(), storage)
     }
@@ -172,9 +164,9 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComps<'r, C> {
         s.storage
     }
 
-    fn get_matched_entities(&self) -> Box<dyn 'r + Iterator<Item = Entity> + Send> {
+    fn get_matched_entities(&self) -> Self::EntitiesIter {
         let components: &'r WriteComps<'r, C> = unsafe { &*(self as *const &mut _ as *const _) };
-        components.storage.entity_iter()
+        components.storage.par_entity_iter()
     }
 
     fn fill_matcher(matcher: &mut ArchetypeMatcher) {

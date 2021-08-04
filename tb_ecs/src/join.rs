@@ -6,6 +6,7 @@ use crate::{ArchetypeMatcher, Entities, Entity, MatchedEntitiesIter};
 pub trait Join<'j>: Sized {
     type Element: 'static;
     type ElementFetcher: ElementFetcher;
+    type EntitiesIter: ParallelIterator<Item = Entity>;
 
     fn join(self) -> JoinIterator<'j, Self> {
         let (entity_iter, elem_fetcher) = self.open();
@@ -14,20 +15,14 @@ pub trait Join<'j>: Sized {
             elem_fetcher,
         }
     }
-    fn open(
-        self,
-    ) -> (
-        Box<dyn 'j + Iterator<Item = Entity> + Send>,
-        Self::ElementFetcher,
-    );
+    fn open(self) -> (Self::EntitiesIter, Self::ElementFetcher);
     fn entities(&self) -> &'j Entities;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
     fn elem_fetcher(&mut self) -> Self::ElementFetcher;
-
-    fn get_matched_entities(&self) -> Box<dyn 'j + Iterator<Item = Entity> + Send>;
+    fn get_matched_entities(&self) -> Self::EntitiesIter;
     fn create_matcher() -> ArchetypeMatcher {
         let mut matcher = ArchetypeMatcher::default();
         Self::fill_matcher(&mut matcher);
@@ -42,19 +37,8 @@ pub trait ElementFetcher: Send {
 }
 
 pub struct JoinIterator<'j, J: Join<'j>> {
-    entity_iter: Box<dyn 'j + Iterator<Item = Entity> + Send>,
+    entity_iter: J::EntitiesIter,
     elem_fetcher: J::ElementFetcher,
-}
-
-impl<'j, J: Join<'j>> Iterator for JoinIterator<'j, J> {
-    type Item = <<J as Join<'j>>::ElementFetcher as ElementFetcher>::Element;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let fetch = &mut self.elem_fetcher;
-        self.entity_iter
-            .next()
-            .map(|entity| fetch.fetch_elem(entity).unwrap())
-    }
 }
 
 impl<'j, J: Join<'j>> ParallelIterator for JoinIterator<'j, J> {
@@ -89,6 +73,7 @@ macro_rules! impl_join_tuple {
         impl<'j, $j0: Join<'j>, $($j1: Join<'j>), +> Join<'j> for ($j0, $($j1), +) {
             type Element = ($j0::Element, $($j1::Element), +);
             type ElementFetcher = ($j0::ElementFetcher, $($j1::ElementFetcher), +);
+            type EntitiesIter = MatchedEntitiesIter<'j>;
 
             #[allow(non_snake_case)]
             fn len(&self) -> usize {
@@ -101,7 +86,7 @@ macro_rules! impl_join_tuple {
 
             #[allow(unused_assignments)]
             #[allow(non_snake_case)]
-            fn open(self) -> (Box<dyn 'j + Iterator<Item = Entity> + Send>, Self::ElementFetcher) {
+            fn open(self) -> (Self::EntitiesIter, Self::ElementFetcher) {
                 let matched_entities = self.get_matched_entities();
                 let (mut $j0, $(mut $j1), +) = self;
                 let ($j0, $($j1), +) = ($j0.elem_fetcher(), $($j1.elem_fetcher()), +);
@@ -120,8 +105,8 @@ macro_rules! impl_join_tuple {
                 ($j0.elem_fetcher(), $($j1.elem_fetcher()), +)
             }
 
-            fn get_matched_entities(&self) -> Box<dyn 'j + Iterator<Item = Entity> + Send> {
-                Box::new(MatchedEntitiesIter::get::<Self>(self.entities().read()))
+            fn get_matched_entities(&self) -> Self::EntitiesIter {
+                MatchedEntitiesIter::get::<Self>(self.entities().read())
             }
 
             fn fill_matcher(matcher: &mut ArchetypeMatcher) {

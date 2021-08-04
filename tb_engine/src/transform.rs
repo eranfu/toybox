@@ -3,34 +3,34 @@ use tb_ecs::*;
 
 #[component]
 pub struct Rotation {
-    pub euler: EulerAngle,
+    pub euler: Euler,
 }
 
 impl Rotation {
-    pub fn new(roll: f32, pitch: f32, yaw: f32) -> Self {
-        Self::from(EulerAngle::new(roll, pitch, yaw))
+    pub fn new(pitch: f32, yaw: f32, roll: f32) -> Self {
+        Self::from(Euler::new(pitch, yaw, roll))
     }
 }
 
-impl From<EulerAngle> for Rotation {
-    fn from(euler: EulerAngle) -> Self {
+impl From<Euler> for Rotation {
+    fn from(euler: Euler) -> Self {
         Self { euler }
     }
 }
 
 #[component]
 pub struct Location {
-    pub location: Vec3,
+    pub location: Point3,
 }
 
 impl Location {
     pub fn new(x: f32, y: f32, z: f32) -> Self {
-        Self::from(Vec3::new(x, y, z))
+        Self::from(Point3::new(x, y, z))
     }
 }
 
-impl From<Vec3> for Location {
-    fn from(vec: Vec3) -> Self {
-        Self { location: vec }
+impl From<Point3> for Location {
+    fn from(location: Point3) -> Self {
+        Self { location }
     }
 }

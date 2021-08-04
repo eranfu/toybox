@@ -9,18 +9,18 @@ pub enum Bounds {
 
 #[derive(Serialize, Deserialize)]
 pub struct SphereBounds {
-    center: Vec3,
+    center: Point3,
     radius: f32,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct BoxBounds {
-    center: Vec3,
-    extends: Vec3,
+    center: Point3,
+    extends: Vector3,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct RectBounds {
-    center: Vec3,
-    extends: Vec3,
+    center: Point3,
+    extends: Vector3,
 }
