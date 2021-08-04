@@ -19,12 +19,13 @@ pub struct Level {
 }
 
 impl Level {
-    pub fn create(path: &TbPath, world: &mut World) -> Result<Self> {
-        Ok(Self {
-            root: Prefab::create(path, world, None)
-                .chain_err(|| "Failed to create root prefab.")?,
-        })
-    }
+    // todo:
+    // pub fn create(path: &TbPath, world: &mut World) -> Result<Self> {
+    //     Ok(Self {
+    //         root: Prefab::create(path, world, None)
+    //             .chain_err(|| "Failed to create root prefab.")?,
+    //     })
+    // }
 }
 
 #[derive(Default)]

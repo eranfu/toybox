@@ -31,27 +31,39 @@ pub struct AssetHandle<T> {
 pub type AssetArc = Arc<SerdeBox<dyn Asset>>;
 
 #[serde_box]
-trait Asset: Any + Send + Sync + SerdeBoxSer + SerdeBoxDe {
+pub trait Asset: Any + Send + Sync + SerdeBoxSer + SerdeBoxDe {
     fn as_any(&self) -> &dyn Any;
 }
+
+impl<T: Any + Send + Sync + SerdeBoxSer + SerdeBoxDe> Asset for T {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+type PendingReceiver = Arc<Mutex<(Receiver<PathBuf>, Receiver<(PathBuf, AssetArc)>)>>;
+
+type IdToPendingChannel = HashMap<
+    u64,
+    (
+        Sender<PathBuf>,
+        Sender<(PathBuf, AssetArc)>,
+        PendingReceiver,
+    ),
+>;
+
+type CompletedAssetsChannel = (
+    Sender<(u64, Result<AssetArc>)>,
+    Receiver<(u64, Result<AssetArc>)>,
+);
 
 pub struct AssetLoader {
     id_to_assets: HashMap<u64, AssetArc>,
     path_to_ids: HashMap<PathBuf, u64>,
     next_id: u64,
     threads: thread_pool::ThreadPool,
-    id_to_pending_channel: HashMap<
-        u64,
-        (
-            Sender<PathBuf>,
-            Sender<(PathBuf, AssetArc)>,
-            Arc<Mutex<(Receiver<PathBuf>, Receiver<(PathBuf, AssetArc)>)>>,
-        ),
-    >,
-    completed_assets_channel: (
-        Sender<(u64, Result<AssetArc>)>,
-        Receiver<(u64, Result<AssetArc>)>,
-    ),
+    id_to_pending_channel: IdToPendingChannel,
+    completed_assets_channel: CompletedAssetsChannel,
 }
 
 ///
@@ -62,15 +74,17 @@ unsafe impl Sync for AssetLoader {}
 
 impl AssetLoader {
     pub fn load<T: Asset>(&mut self, path: TbPath) -> AssetHandle<T> {
+        let id_to_pending_channel = &mut self.id_to_pending_channel;
         let id = match self.path_to_ids.entry(path.into()) {
             Entry::Occupied(occupied) => *occupied.get(),
             Entry::Vacant(vacant) => {
                 let id = self.next_id;
+                let path = vacant.key().clone();
                 vacant.insert(id);
                 self.next_id += 1;
                 let (pending_load_sender, _, pending_receiver) =
-                    self.get_or_new_pending_channel(id);
-                pending_load_sender.send(vacant.into_key());
+                    Self::pending_channel_of_id(id_to_pending_channel, id);
+                pending_load_sender.send(path).unwrap();
 
                 let pending_receiver = pending_receiver.clone();
                 let completed_sender = self.completed_assets_channel.0.clone();
@@ -106,18 +120,18 @@ impl AssetLoader {
     }
 
     pub fn update(&mut self) {
+        let id_to_assets = &mut self.id_to_assets;
         self.completed_assets_channel
             .1
             .try_iter()
             .for_each(|(id, asset)| {
                 match asset {
                     Ok(asset) => {
-                        self.id_to_assets.insert(id, asset);
+                        id_to_assets.insert(id, asset);
                     }
                     Err(e) => {
                         eprintln!("{}", e.display_chain());
-                        self.id_to_assets.remove(&id);
-                        return;
+                        id_to_assets.remove(&id);
                     }
                 };
             });
@@ -160,43 +174,47 @@ impl AssetLoader {
 
     fn process_pending_task(
         id: u64,
-        pending_receiver: Arc<Mutex<(Receiver<PathBuf>, Receiver<(PathBuf, AssetArc)>)>>,
+        pending_receiver: PendingReceiver,
         completed_sender: Sender<(u64, Result<AssetArc>)>,
     ) {
-        let mut pending_receiver = match pending_receiver.lock() {
+        let pending_receiver = match pending_receiver.lock() {
             Ok(receiver) => receiver,
             Err(e) => {
-                completed_sender.send((
-                    id,
-                    Err(Error::with_chain(
-                        Error::from(e.to_string()),
-                        "Failed to lock pending_receiver.",
-                    )),
-                ));
+                completed_sender
+                    .send((
+                        id,
+                        Err(Error::with_chain(
+                            Error::from(e.to_string()),
+                            "Failed to lock pending_receiver.",
+                        )),
+                    ))
+                    .unwrap();
                 return;
             }
         };
         let (pending_load_receiver, pending_save_receiver) = pending_receiver.deref();
         if let Some((path, asset)) = pending_save_receiver.try_iter().last() {
             pending_load_receiver.try_iter().last();
-            completed_sender.send((id, Self::save_block(path, asset)));
+            completed_sender
+                .send((id, Self::save_block(path, asset)))
+                .unwrap();
             return;
         }
 
         if let Some(path) = pending_load_receiver.try_iter().last() {
-            completed_sender.send((id, Self::load_block(path)));
+            completed_sender.send((id, Self::load_block(path))).unwrap();
         }
     }
 
-    fn get_or_new_pending_channel(
-        &mut self,
+    fn pending_channel_of_id(
+        id_to_pending_channel: &mut IdToPendingChannel,
         id: u64,
     ) -> &(
         Sender<PathBuf>,
         Sender<(PathBuf, AssetArc)>,
-        Arc<Mutex<(Receiver<PathBuf>, Receiver<(PathBuf, AssetArc)>)>>,
+        PendingReceiver,
     ) {
-        self.id_to_pending_channel.entry(id).or_insert_with(|| {
+        id_to_pending_channel.entry(id).or_insert_with(|| {
             let (pending_load_sender, pending_load_receiver) = channel();
             let (pending_save_sender, pending_save_receiver) = channel();
             (

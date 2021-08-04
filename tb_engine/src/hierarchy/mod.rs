@@ -1,15 +1,16 @@
 use std::collections::LinkedList;
+use std::path::PathBuf;
 
 use tb_ecs::*;
 
 #[component]
 pub struct Name {
-    name: String,
+    pub name: String,
 }
 
 #[component]
 pub struct Parent {
-    parent: Entity,
+    pub entity: Entity,
 }
 
 #[component]
@@ -19,16 +20,24 @@ pub struct Children {
 
 pub struct RecursiveChildrenIter<'s> {
     children_components: &'s ComponentStorage<Children>,
+    names: &'s ComponentStorage<Name>,
     stack: LinkedList<(Entity, Option<std::slice::Iter<'s, Entity>>)>,
+    path: PathBuf,
 }
 
 impl<'s> RecursiveChildrenIter<'s> {
-    pub fn new(children_components: &'s ComponentStorage<Children>, root: Entity) -> Self {
+    pub fn new(
+        children_components: &'s ComponentStorage<Children>,
+        names: &'s ComponentStorage<Name>,
+        root: Entity,
+    ) -> Self {
         let mut stack = LinkedList::new();
         stack.push_back((root, Self::get_children(children_components, root)));
         RecursiveChildrenIter {
             children_components,
+            names,
             stack,
+            path: Default::default(),
         }
     }
 
@@ -43,7 +52,7 @@ impl<'s> RecursiveChildrenIter<'s> {
 }
 
 impl<'s> Iterator for RecursiveChildrenIter<'s> {
-    type Item = Entity;
+    type Item = (Entity, PathBuf);
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
@@ -62,30 +71,49 @@ impl<'s> Iterator for RecursiveChildrenIter<'s> {
                             top_child,
                             Self::get_children(self.children_components, top_child),
                         ));
+                        let name = self.names.get(top_child).unwrap();
+                        self.path.push(&name.name);
                         continue;
                     }
                 },
             };
             let res = top.0;
             self.stack.pop_back();
-            return Some(res);
+            let path = {
+                let path = self.path.clone();
+                if self.path.pop() {
+                    path
+                } else {
+                    "__ROOT__".into()
+                }
+            };
+            return Some((res, path));
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use tb_ecs::*;
 
-    use crate::hierarchy::{Children, RecursiveChildrenIter};
+    use crate::hierarchy::{Children, Name, RecursiveChildrenIter};
 
     #[test]
     fn recursive_children_iter() {
         let root = Entity::new(0);
         let children_components = ComponentStorage::<Children>::default();
-        let entities: Vec<Entity> =
-            RecursiveChildrenIter::new(&children_components, root).collect();
-        assert_eq!(entities, vec![root])
+        let mut names = ComponentStorage::<Name>::default();
+        names.insert(
+            root,
+            Name {
+                name: "root".to_string(),
+            },
+        );
+        let entities: Vec<(Entity, PathBuf)> =
+            RecursiveChildrenIter::new(&children_components, &names, root).collect();
+        assert_eq!(entities, vec![(root, "__ROOT__".into())])
     }
 
     #[test]

@@ -9,6 +9,16 @@ pub struct EntityInstance {
     data: PrefabOrInstance,
 }
 
+impl EntityInstance {
+    pub fn new() -> Self {
+        let header = EntityInstanceHeader::default();
+        Self {
+            header,
+            data: PrefabOrInstance::Instance { components: vec![] },
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 enum PrefabOrInstance {
     Prefab {
@@ -29,7 +39,7 @@ struct EntityPath {
     entity: PathBuf,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Default)]
 struct EntityInstanceHeader {
     bounds: Option<tb_physics::bounds::Bounds>,
 }
