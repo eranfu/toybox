@@ -68,7 +68,7 @@ impl Scheduler {
     }
 
     fn refresh_systems(&mut self, world: &mut World) {
-        let mut sr = SystemRegistry::get_instance();
+        let mut sr = SystemRegistry::instance();
         let sr: &mut SystemRegistry = &mut sr;
         let systems = sr.systems();
         let infos: Vec<_> = systems

@@ -23,7 +23,7 @@ pub struct SystemRegistry {
 }
 
 impl SystemRegistry {
-    pub fn get_instance() -> MutexGuard<'static, SystemRegistry> {
+    pub fn instance() -> MutexGuard<'static, SystemRegistry> {
         static SYSTEM_REGISTRY: SyncLazy<Mutex<SystemRegistry>> = SyncLazy::new(|| {
             let mut system_changed_events = EventChannel::default();
             let system_changed_reader = system_changed_events.register();
@@ -49,7 +49,7 @@ impl SystemRegistry {
     }
 
     pub fn add_system_infos(infos: Box<dyn Iterator<Item = &'static SystemInfo>>) {
-        let mut sr = Self::get_instance();
+        let mut sr = Self::instance();
         let sr = &mut sr;
         sr.system_changed_events.push(());
         let systems = &mut sr.systems;
@@ -235,12 +235,12 @@ mod tests {
     #[test]
     fn it_works() {
         let mut has = false;
-        for _x in SystemRegistry::get_instance().systems().iter() {
+        for _x in SystemRegistry::instance().systems().iter() {
             has = true;
         }
         assert!(has);
         let mut has = false;
-        for _x in SystemRegistry::get_instance().systems().iter() {
+        for _x in SystemRegistry::instance().systems().iter() {
             has = true;
         }
         assert!(has);
