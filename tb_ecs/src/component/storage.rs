@@ -2,8 +2,9 @@ use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::slice::Iter;
 
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
+
+use tb_core::*;
 
 use crate::{join, Component, Entities, Entity, EntityRef};
 

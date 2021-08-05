@@ -7,10 +7,11 @@ use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use bit_set::BitSet;
 use rayon::iter::plumbing::UnindexedConsumer;
-use rayon::iter::{Flatten, ParallelIterator};
-use rayon::prelude::*;
+use rayon::iter::{Copied, Flatten, ParallelIterator};
 use rayon::slice::Iter;
 use serde::{Deserialize, Serialize};
+
+use tb_core::*;
 
 use crate::registry::{ComponentIndex, ComponentRegistry};
 use crate::{Component, Join, SystemData, World, WriteComps};
@@ -113,8 +114,8 @@ impl EntitiesInner {
         self.entity_to_index.contains_key(&entity)
     }
 
-    pub fn par_iter(&self) -> Flatten<Iter<Vec<Entity>>> {
-        self.archetypes_entities.par_iter().flatten()
+    pub fn par_iter(&self) -> Copied<Flatten<Iter<Vec<Entity>>>> {
+        self.archetypes_entities.par_iter().flatten().copied()
     }
     pub fn kill(&mut self, entity: Entity, mut for_each_component: impl FnMut(usize)) {
         let entity_index = match self.entity_to_index.remove(&entity) {
@@ -356,7 +357,7 @@ impl World {
 
 pub struct ParEntitiesIter<'e> {
     _guard: RwLockReadGuard<'e, EntitiesInner>,
-    inner: Flatten<Iter<'e, Vec<Entity>>>,
+    inner: Copied<Flatten<Iter<'e, Vec<Entity>>>>,
 }
 
 impl<'e> ParEntitiesIter<'e> {
@@ -374,11 +375,11 @@ unsafe impl<'e> Send for ParEntitiesIter<'e> {}
 impl<'e> ParallelIterator for ParEntitiesIter<'e> {
     type Item = Entity;
 
-    fn drive_unindexed<C>(self, _consumer: C) -> C::Result
+    fn drive_unindexed<C>(self, consumer: C) -> C::Result
     where
         C: UnindexedConsumer<Self::Item>,
     {
-        todo!()
+        self.inner.drive_unindexed(consumer)
     }
 }
 

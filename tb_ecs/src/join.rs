@@ -1,6 +1,8 @@
 use rayon::iter::plumbing::UnindexedConsumer;
 use rayon::iter::ParallelIterator;
 
+use tb_core::*;
+
 use crate::{ArchetypeMatcher, Entities, Entity, MatchedEntitiesIter};
 
 pub trait Join<'j>: Sized {

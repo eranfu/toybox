@@ -1,3 +1,4 @@
+use std::ops::Mul;
 use std::time::Instant;
 
 use toybox::*;
@@ -21,22 +22,22 @@ impl Default for Time {
 
 #[component]
 struct Velocity {
-    velocity: Vec3,
+    velocity: Vector3,
 }
 
-impl From<Vec3> for Velocity {
-    fn from(vec: Vec3) -> Self {
+impl From<Vector3> for Velocity {
+    fn from(vec: Vector3) -> Self {
         Self { velocity: vec }
     }
 }
 
 #[component]
 struct AngularVelocity {
-    euler_velocity: EulerAngle,
+    euler_velocity: Euler,
 }
 
-impl From<EulerAngle> for AngularVelocity {
-    fn from(euler_velocity: EulerAngle) -> Self {
+impl From<Euler> for AngularVelocity {
+    fn from(euler_velocity: Euler) -> Self {
         Self { euler_velocity }
     }
 }
@@ -66,10 +67,11 @@ impl<'r> System<'r> for MoveSystem {
     );
 
     fn run(&mut self, (velocity, mut location, time): Self::SystemData) {
-        for (velocity, location) in (&velocity, &mut location).join() {
-            let (velocity, location): (&Velocity, &mut Location) = (velocity, location);
-            location.location += velocity.velocity * time.delta;
-        }
+        (&velocity, &mut location).join().for_each(
+            |(velocity, location): (&Velocity, &mut Location)| {
+                location.location += velocity.velocity * time.delta;
+            },
+        );
     }
 }
 
@@ -79,16 +81,16 @@ struct RotateSystem;
 impl<'r> System<'r> for RotateSystem {
     type SystemData = (
         RBWComps<'r, AngularVelocity>,
-        WriteComps<'r, Rotation>,
+        WriteComps<'r, RotationComp>,
         RAW<'r, Time>,
     );
 
     fn run(&mut self, (a_velocity, mut rotation, time): Self::SystemData) {
-        (&a_velocity, &mut rotation).join().par_iter();
-        for comp in (&a_velocity, &mut rotation).join() {
-            let (a_velocity, rotation): (&AngularVelocity, &mut Rotation) = comp;
-            rotation.euler += a_velocity.euler_velocity * time.delta;
-        }
+        (&a_velocity, &mut rotation).join().for_each(
+            |(a_velocity, rotation): (&AngularVelocity, &mut RotationComp)| {
+                rotation.euler += a_velocity.euler_velocity * time.delta;
+            },
+        );
     }
 }
 
@@ -100,9 +102,9 @@ fn main() {
         world
             .create_entity()
             .with(Location::new(0f32, 0f32, 0f32))
-            .with(Velocity::from(Vec3::new(10f32, 0f32, 0f32)))
-            .with(Rotation::new(0f32, 0f32, 0f32))
-            .with(AngularVelocity::from(EulerAngle::new(10f32, 0f32, 0f32)))
+            .with(Velocity::from(Vector3::new(10f32, 0f32, 0f32)))
+            .with(RotationComp::from(Euler::zero()))
+            .with(AngularVelocity::from(Euler::new(10f32, 0f32, 0f32)))
             .create();
     }
     let after_entity_generation = Instant::now();

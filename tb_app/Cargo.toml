@@ -7,7 +7,6 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-rayon = "1.5.0"
 tb_core = { path = "../tb_core" }
 tb_ecs = { path = "../tb_ecs" }
 tb_engine = { path = "../tb_engine" }

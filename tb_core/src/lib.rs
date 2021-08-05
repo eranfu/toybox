@@ -2,6 +2,7 @@
 #![feature(allocator_api)]
 #![feature(layout_for_ptr)]
 
+pub use rayon::{self, prelude::*};
 pub use serde::{self, *};
 pub use serde_box::{self, *};
 pub use serde_json;

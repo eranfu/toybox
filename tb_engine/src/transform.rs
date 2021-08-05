@@ -2,17 +2,17 @@ use tb_core::*;
 use tb_ecs::*;
 
 #[component]
-pub struct Rotation {
+pub struct RotationComp {
     pub euler: Euler,
 }
 
-impl Rotation {
+impl RotationComp {
     pub fn new(pitch: f32, yaw: f32, roll: f32) -> Self {
         Self::from(Euler::new(pitch, yaw, roll))
     }
 }
 
-impl From<Euler> for Rotation {
+impl From<Euler> for RotationComp {
     fn from(euler: Euler) -> Self {
         Self { euler }
     }

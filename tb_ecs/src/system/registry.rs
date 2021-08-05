@@ -4,10 +4,9 @@ use std::hash::{Hash, Hasher};
 use std::lazy::SyncLazy;
 use std::sync::{Mutex, MutexGuard};
 
-use rayon::prelude::*;
-
 use tb_core::algorithm::topological_sort::TopologicalGraph;
 use tb_core::event_channel::{EventChannel, ReaderHandle};
+use tb_core::*;
 
 use crate::scheduler::RunnableSystem;
 use crate::world::ResourceId;
