@@ -98,7 +98,7 @@ fn main() {
     let mut world = World::default();
     world.insert(Time::default);
     let start = Instant::now();
-    for _i in 0..10000 {
+    for _i in 0..1000000 {
         world
             .create_entity()
             .with(Location::new(0f32, 0f32, 0f32))

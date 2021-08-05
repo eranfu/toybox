@@ -20,6 +20,10 @@ impl<T: Component> ComponentStorage<T> {
         (self.entities.iter(), self)
     }
 
+    pub(crate) fn entity_iter(&self) -> std::iter::Copied<std::slice::Iter<Entity>> {
+        self.entities.iter().copied()
+    }
+
     pub(crate) fn par_entity_iter(&self) -> rayon::iter::Copied<rayon::slice::Iter<Entity>> {
         self.entities.par_iter().copied()
     }

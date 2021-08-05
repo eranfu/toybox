@@ -114,9 +114,14 @@ impl<'r, C: Component> Not for &'r mut WriteComps<'r, C> {
 impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComps<'r, C, A> {
     type Element = C;
     type ElementFetcher = &'r ComponentStorage<C>;
-    type EntitiesIter = rayon::iter::Copied<rayon::slice::Iter<'r, Entity>>;
+    type EntitiesIter = std::iter::Copied<std::slice::Iter<'r, Entity>>;
+    type ParEntitiesIter = rayon::iter::Copied<rayon::slice::Iter<'r, Entity>>;
 
     fn open(mut self) -> (Self::EntitiesIter, Self::ElementFetcher) {
+        (self.storage.entity_iter(), self.elem_fetcher())
+    }
+
+    fn par_open(mut self) -> (Self::ParEntitiesIter, Self::ElementFetcher) {
         (self.storage.par_entity_iter(), self.elem_fetcher())
     }
 
@@ -132,7 +137,11 @@ impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComps<'r, C, A> {
         self.storage
     }
 
-    fn get_matched_entities(&self) -> Self::EntitiesIter {
+    fn matched_entities_iter(&self) -> Self::EntitiesIter {
+        self.storage.entity_iter()
+    }
+
+    fn par_matched_entities_iter(&self) -> Self::ParEntitiesIter {
         self.storage.par_entity_iter()
     }
 
@@ -144,11 +153,17 @@ impl<'r, C: Component, A: AccessOrder> Join<'r> for &'r ReadComps<'r, C, A> {
 impl<'r, C: Component> Join<'r> for &'r mut WriteComps<'r, C> {
     type Element = C;
     type ElementFetcher = &'r mut ComponentStorage<C>;
-    type EntitiesIter = rayon::iter::Copied<rayon::slice::Iter<'r, Entity>>;
+    type EntitiesIter = std::iter::Copied<std::slice::Iter<'r, Entity>>;
+    type ParEntitiesIter = rayon::iter::Copied<rayon::slice::Iter<'r, Entity>>;
 
     fn open(self) -> (Self::EntitiesIter, Self::ElementFetcher) {
         let storage = unsafe { &mut *(&mut self.storage as *mut _ as *mut _) };
-        (self.get_matched_entities(), storage)
+        (self.matched_entities_iter(), storage)
+    }
+
+    fn par_open(self) -> (Self::ParEntitiesIter, Self::ElementFetcher) {
+        let storage = unsafe { &mut *(&mut self.storage as *mut _ as *mut _) };
+        (self.par_matched_entities_iter(), storage)
     }
 
     fn entities(&self) -> &'r Entities {
@@ -164,7 +179,12 @@ impl<'r, C: Component> Join<'r> for &'r mut WriteComps<'r, C> {
         s.storage
     }
 
-    fn get_matched_entities(&self) -> Self::EntitiesIter {
+    fn matched_entities_iter(&self) -> Self::EntitiesIter {
+        let components: &'r WriteComps<'r, C> = unsafe { &*(self as *const &mut _ as *const _) };
+        components.storage.entity_iter()
+    }
+
+    fn par_matched_entities_iter(&self) -> Self::ParEntitiesIter {
         let components: &'r WriteComps<'r, C> = unsafe { &*(self as *const &mut _ as *const _) };
         components.storage.par_entity_iter()
     }
@@ -289,7 +309,7 @@ mod tests {
         world.insert(ComponentStorage::<Component2>::default);
         let components1 = unsafe { RAWComps::<Component1>::fetch(&world) };
         let mut components2 = unsafe { WriteComps::<Component2>::fetch(&world) };
-        for _x in (&components1, &mut components2).join() {
+        for _x in (&components1, &mut components2).par_join() {
             unreachable!()
         }
 
@@ -301,7 +321,7 @@ mod tests {
         let components1 = unsafe { RAWComps::<Component1>::fetch(&world) };
         let mut components2 = unsafe { WriteComps::<Component2>::fetch(&world) };
         let (v1, v2): (&Component1, &mut Component2) =
-            (&components1, &mut components2).join().next().unwrap();
+            (&components1, &mut components2).par_join().next().unwrap();
         assert_eq!(v1.value1, 1);
         assert_eq!(v2.value2, 2);
     }
@@ -322,7 +342,7 @@ mod tests {
         let (components1, components2) =
             unsafe { <(RBWComps<Component1>, RBWComps<Component2>)>::fetch(&world) };
         let mut has = false;
-        for (component1, component2) in (&components1, &components2).join() {
+        for (component1, component2) in (&components1, &components2).par_join() {
             has = true;
             assert_eq!(component1.value1, 1);
             assert_eq!(component2.value2, 2);
@@ -330,13 +350,13 @@ mod tests {
         assert!(has);
 
         let mut has = false;
-        for (component1, _) in (&components1, !&components2).join() {
+        for (component1, _) in (&components1, !&components2).par_join() {
             has = true;
             assert_eq!(component1.value1, 11);
         }
         assert!(has);
 
-        for (_, _) in (!&components1, &components2).join() {
+        for (_, _) in (!&components1, &components2).par_join() {
             unreachable!()
         }
     }

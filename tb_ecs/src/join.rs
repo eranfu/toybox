@@ -3,12 +3,13 @@ use rayon::iter::ParallelIterator;
 
 use tb_core::*;
 
-use crate::{ArchetypeMatcher, Entities, Entity, MatchedEntitiesIter};
+use crate::{ArchetypeMatcher, Entities, Entity, MatchedEntitiesIter, ParMatchedEntitiesIter};
 
 pub trait Join<'j>: Sized {
     type Element: 'static;
     type ElementFetcher: ElementFetcher;
-    type EntitiesIter: ParallelIterator<Item = Entity>;
+    type EntitiesIter: Iterator<Item = Entity>;
+    type ParEntitiesIter: ParallelIterator<Item = Entity>;
 
     fn join(self) -> JoinIterator<'j, Self> {
         let (entity_iter, elem_fetcher) = self.open();
@@ -17,14 +18,23 @@ pub trait Join<'j>: Sized {
             elem_fetcher,
         }
     }
+    fn par_join(self) -> ParJoinIterator<'j, Self> {
+        let (entity_iter, elem_fetcher) = self.par_open();
+        ParJoinIterator {
+            entity_iter,
+            elem_fetcher,
+        }
+    }
     fn open(self) -> (Self::EntitiesIter, Self::ElementFetcher);
+    fn par_open(self) -> (Self::ParEntitiesIter, Self::ElementFetcher);
     fn entities(&self) -> &'j Entities;
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
     fn elem_fetcher(&mut self) -> Self::ElementFetcher;
-    fn get_matched_entities(&self) -> Self::EntitiesIter;
+    fn matched_entities_iter(&self) -> Self::EntitiesIter;
+    fn par_matched_entities_iter(&self) -> Self::ParEntitiesIter;
     fn create_matcher() -> ArchetypeMatcher {
         let mut matcher = ArchetypeMatcher::default();
         Self::fill_matcher(&mut matcher);
@@ -43,10 +53,26 @@ pub struct JoinIterator<'j, J: Join<'j>> {
     elem_fetcher: J::ElementFetcher,
 }
 
-impl<'j, J: Join<'j>> ParallelIterator for JoinIterator<'j, J> {
+impl<'j, J: Join<'j>> Iterator for JoinIterator<'j, J> {
     type Item = <<J as Join<'j>>::ElementFetcher as ElementFetcher>::Element;
 
-    fn drive_unindexed<C>(self, consumer: C) -> C::Result
+    fn next(&mut self) -> Option<Self::Item> {
+        let fetch = &mut self.elem_fetcher;
+        self.entity_iter
+            .next()
+            .map(|entity| fetch.fetch_elem(entity).unwrap())
+    }
+}
+
+pub struct ParJoinIterator<'j, J: Join<'j>> {
+    entity_iter: J::ParEntitiesIter,
+    elem_fetcher: J::ElementFetcher,
+}
+
+impl<'j, J: Join<'j>> ParallelIterator for ParJoinIterator<'j, J> {
+    type Item = <<J as Join<'j>>::ElementFetcher as ElementFetcher>::Element;
+
+    fn drive_unindexed<C>(self, _consumer: C) -> C::Result
     where
         C: UnindexedConsumer<Self::Item>,
     {
@@ -76,6 +102,7 @@ macro_rules! impl_join_tuple {
             type Element = ($j0::Element, $($j1::Element), +);
             type ElementFetcher = ($j0::ElementFetcher, $($j1::ElementFetcher), +);
             type EntitiesIter = MatchedEntitiesIter<'j>;
+            type ParEntitiesIter = ParMatchedEntitiesIter<'j>;
 
             #[allow(non_snake_case)]
             fn len(&self) -> usize {
@@ -89,7 +116,16 @@ macro_rules! impl_join_tuple {
             #[allow(unused_assignments)]
             #[allow(non_snake_case)]
             fn open(self) -> (Self::EntitiesIter, Self::ElementFetcher) {
-                let matched_entities = self.get_matched_entities();
+                let matched_entities = self.matched_entities_iter();
+                let (mut $j0, $(mut $j1), +) = self;
+                let ($j0, $($j1), +) = ($j0.elem_fetcher(), $($j1.elem_fetcher()), +);
+                (matched_entities, ($j0, $($j1), +))
+            }
+
+            #[allow(unused_assignments)]
+            #[allow(non_snake_case)]
+            fn par_open(self) -> (Self::ParEntitiesIter, Self::ElementFetcher) {
+                let matched_entities = self.par_matched_entities_iter();
                 let (mut $j0, $(mut $j1), +) = self;
                 let ($j0, $($j1), +) = ($j0.elem_fetcher(), $($j1.elem_fetcher()), +);
                 (matched_entities, ($j0, $($j1), +))
@@ -107,8 +143,12 @@ macro_rules! impl_join_tuple {
                 ($j0.elem_fetcher(), $($j1.elem_fetcher()), +)
             }
 
-            fn get_matched_entities(&self) -> Self::EntitiesIter {
+            fn matched_entities_iter(&self) -> Self::EntitiesIter {
                 MatchedEntitiesIter::get::<Self>(self.entities().read())
+            }
+
+            fn par_matched_entities_iter(&self) -> Self::ParEntitiesIter {
+                ParMatchedEntitiesIter::get::<Self>(self.entities().read())
             }
 
             fn fill_matcher(matcher: &mut ArchetypeMatcher) {

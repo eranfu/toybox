@@ -56,6 +56,9 @@ impl Entities {
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    pub fn iter(&self) -> EntitiesIter<'_> {
+        EntitiesIter::new(self.read())
+    }
     pub fn par_iter(&self) -> ParEntitiesIter<'_> {
         ParEntitiesIter::new(self.read())
     }
@@ -114,9 +117,13 @@ impl EntitiesInner {
         self.entity_to_index.contains_key(&entity)
     }
 
+    pub fn iter(&self) -> std::iter::Copied<std::iter::Flatten<std::slice::Iter<Vec<Entity>>>> {
+        self.archetypes_entities.iter().flatten().copied()
+    }
     pub fn par_iter(&self) -> Copied<Flatten<Iter<Vec<Entity>>>> {
         self.archetypes_entities.par_iter().flatten().copied()
     }
+
     pub fn kill(&mut self, entity: Entity, mut for_each_component: impl FnMut(usize)) {
         let entity_index = match self.entity_to_index.remove(&entity) {
             Some(entity_index) => entity_index,
@@ -355,6 +362,31 @@ impl World {
     }
 }
 
+pub struct EntitiesIter<'e> {
+    _guard: RwLockReadGuard<'e, EntitiesInner>,
+    inner: std::iter::Copied<std::iter::Flatten<std::slice::Iter<'e, Vec<Entity>>>>,
+}
+
+impl<'e> EntitiesIter<'e> {
+    fn new(guard: RwLockReadGuard<EntitiesInner>) -> EntitiesIter {
+        let inner = unsafe { std::mem::transmute(guard.iter()) };
+        EntitiesIter {
+            _guard: guard,
+            inner,
+        }
+    }
+}
+
+unsafe impl<'e> Send for EntitiesIter<'e> {}
+
+impl<'e> Iterator for EntitiesIter<'e> {
+    type Item = Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner.next()
+    }
+}
+
 pub struct ParEntitiesIter<'e> {
     _guard: RwLockReadGuard<'e, EntitiesInner>,
     inner: Copied<Flatten<Iter<'e, Vec<Entity>>>>,
@@ -475,6 +507,66 @@ impl MatchedEntities {
 }
 
 pub struct MatchedEntitiesIter<'e> {
+    archetype_entities: Option<std::iter::Copied<std::slice::Iter<'e, Entity>>>,
+    entities: RwLockReadGuard<'e, EntitiesInner>,
+    archetypes: std::iter::Fuse<std::iter::Copied<std::slice::Iter<'e, ArchetypeIndex>>>,
+    _matched_entities_map: RwLockReadGuard<'e, HashMap<TypeId, RwLock<MatchedEntities>>>,
+    _matched_entities: RwLockReadGuard<'e, MatchedEntities>,
+}
+
+impl<'e> MatchedEntitiesIter<'e> {
+    pub(crate) fn get<'j, T: Join<'j>>(entities: RwLockReadGuard<'e, EntitiesInner>) -> Self {
+        let (matched_entities_map, matched_entities): (
+            RwLockReadGuard<'e, HashMap<TypeId, RwLock<MatchedEntities>>>,
+            RwLockReadGuard<'e, MatchedEntities>,
+        ) = unsafe { std::mem::transmute(MatchedEntities::get::<T>(&entities)) };
+
+        let archetypes = unsafe { std::mem::transmute(matched_entities.matched_archetypes.iter()) };
+
+        Self {
+            archetype_entities: None,
+            entities,
+            archetypes,
+            _matched_entities_map: matched_entities_map,
+            _matched_entities: matched_entities,
+        }
+    }
+}
+
+impl<'e> Iterator for MatchedEntitiesIter<'e> {
+    type Item = Entity;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            match self.archetype_entities.as_mut() {
+                None => {
+                    self.archetype_entities = {
+                        match self.archetypes.next() {
+                            None => {
+                                return None;
+                            }
+                            Some(archetype) => {
+                                let s: &MatchedEntitiesIter<'e> =
+                                    unsafe { &*(self as &mut _ as *mut _) };
+                                Some(s.entities.archetypes_entities[archetype].iter().copied())
+                            }
+                        }
+                    }
+                }
+                Some(archetype_entities) => match archetype_entities.next() {
+                    None => {
+                        self.archetype_entities = None;
+                    }
+                    entity @ Some(_) => {
+                        return entity;
+                    }
+                },
+            }
+        }
+    }
+}
+
+pub struct ParMatchedEntitiesIter<'e> {
     archetype_entities: Option<rayon::iter::Copied<Iter<'e, Entity>>>,
     entities: RwLockReadGuard<'e, EntitiesInner>,
     archetypes: Iter<'e, ArchetypeIndex>,
@@ -482,7 +574,7 @@ pub struct MatchedEntitiesIter<'e> {
     _matched_entities: RwLockReadGuard<'e, MatchedEntities>,
 }
 
-impl<'e> MatchedEntitiesIter<'e> {
+impl<'e> ParMatchedEntitiesIter<'e> {
     pub(crate) fn get<'j, T: Join<'j>>(entities: RwLockReadGuard<'e, EntitiesInner>) -> Self {
         let (matched_entities_map, matched_entities): (
             RwLockReadGuard<'e, HashMap<TypeId, RwLock<MatchedEntities>>>,
@@ -502,39 +594,10 @@ impl<'e> MatchedEntitiesIter<'e> {
     }
 }
 
-unsafe impl<'e> Send for MatchedEntitiesIter<'e> {}
+unsafe impl<'e> Send for ParMatchedEntitiesIter<'e> {}
 
-impl<'e> ParallelIterator for MatchedEntitiesIter<'e> {
+impl<'e> ParallelIterator for ParMatchedEntitiesIter<'e> {
     type Item = Entity;
-
-    // fn next(&mut self) -> Option<Self::Item> {
-    //     loop {
-    //         match self.archetype_entities.as_mut() {
-    //             None => {
-    //                 self.archetype_entities = {
-    //                     match self.archetypes.next() {
-    //                         None => {
-    //                             return None;
-    //                         }
-    //                         Some(&archetype) => {
-    //                             let s: &MatchedEntitiesIter<'e> =
-    //                                 unsafe { &*(self as &mut _ as *mut _) };
-    //                             Some(s.entities.archetypes_entities[archetype].iter().copied())
-    //                         }
-    //                     }
-    //                 }
-    //             }
-    //             Some(archetype_entities) => match archetype_entities.next() {
-    //                 None => {
-    //                     self.archetype_entities = None;
-    //                 }
-    //                 entity @ Some(_) => {
-    //                     return entity;
-    //                 }
-    //             },
-    //         }
-    //     }
-    // }
 
     fn drive_unindexed<C>(self, _consumer: C) -> C::Result
     where
